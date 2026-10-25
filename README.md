@@ -1,6 +1,6 @@
 # Citas · La Princesa de las Cejas
 
-Primera versión funcional para una profesional y una sede en Boston.
+Primera versión funcional para una profesional y una sede en Medellín.
 
 ## Desarrollo local
 
@@ -20,9 +20,9 @@ Los datos se guardan en `.data/postgres` usando PGlite (PostgreSQL embebido). No
 - Web adaptable con selector de idioma de interfaz ES/EN y flujo de reserva.
 - PWA con manifest, icono SVG y respuesta sin conexión; requiere conexión para operaciones. La instalación depende del navegador y debe validarse en los dispositivos finales.
 - Agenda diaria con navegación semanal, estados confirmada/completada/cancelada y bloqueos de tiempo.
-- Crear y editar servicios: nombre, descripción, precio en centavos USD, duración, margen y publicación.
+- Crear y editar servicios: nombre, descripción, precio en centavos COP, duración, margen y publicación.
 - Editor de nombre, bienvenida, dirección y teléfono público.
-- Horario y días de atención, zona America/New_York y horario de verano.
+- Horario y días de atención, zona America/Bogota (UTC−5 todo el año).
 - Base de datos impide reservas superpuestas incluso con peticiones concurrentes.
 - Precio y nombre del servicio se conservan en la reserva aunque el catálogo cambie.
 - Autenticación administrativa con cookie HttpOnly, firma HMAC y caducidad de 12 horas cuando se configura contraseña.
@@ -35,7 +35,7 @@ El VPS existente aloja `/opt/citas`: Docker Compose ejecuta Next.js en `127.0.0.
 
 Las claves están únicamente en `/opt/citas/.env`, con permisos restringidos. No incluirlas en Git. `deploy/backup.sh` genera una copia diaria comprimida en `/var/backups/citas` y conserva treinta días; son copias dentro del mismo VPS, no externas. La tarea está en `/etc/cron.d/citas-backup`. Los valores DNS anteriores están en `deploy/dns-before.json`.
 
-Antes de aceptar reservas, entrar al panel y configurar servicios, precios, duración, dirección y horario real. El catálogo de producción inicia vacío. WhatsApp sigue pendiente de número y de integración con Meta.
+Antes de aceptar reservas, entrar al panel y configurar servicios, precios, duración, dirección y horario real. El catálogo de producción inicia vacío. WhatsApp tiene un enlace de contacto; la automatización con Meta sigue pendiente.
 
 ## Despliegue alternativo
 
@@ -52,7 +52,7 @@ El esquema se inicializa automáticamente en la primera consulta. Para evolució
 
 ## Pendiente, no simulado
 
-WhatsApp no envía ni recibe mensajes: falta número y configuración de Meta Business, webhook firmado, almacenamiento de eventos idempotentes y trabajador con reintentos/plantillas. No hay cobros, anticipos, subida de fotografías, reprogramación directa, historial de auditoría ni CRM independiente. Para cambiar una cita en esta versión se cancela y se vuelve a reservar. El contenido editable tiene una versión textual; ES/EN traduce la interfaz, no el texto escrito por la administradora. Quedan pendientes política de privacidad y condiciones del negocio, migraciones versionadas, copias externas, monitoreo, accesibilidad del foco en diálogos y validación de instalación en dispositivos reales.
+WhatsApp no envía ni recibe mensajes: falta configuración de Meta Business, webhook firmado, almacenamiento de eventos idempotentes y trabajador con reintentos/plantillas. No hay cobros, anticipos, subida de fotografías, reprogramación directa, historial de auditoría ni CRM independiente. Para cambiar una cita en esta versión se cancela y se vuelve a reservar. El contenido editable tiene una versión textual; ES/EN traduce la interfaz, no el texto escrito por la administradora. Quedan pendientes política de privacidad y condiciones del negocio, migraciones versionadas, copias externas, monitoreo, accesibilidad del foco en diálogos y validación de instalación en dispositivos reales.
 
 ## Organización
 
@@ -63,3 +63,5 @@ WhatsApp no envía ni recibe mensajes: falta número y configuración de Meta Bu
 - `lib/db.ts`: esquema y adaptadores de PostgreSQL.
 - `lib/time.ts`: zona horaria y cálculo de horarios.
 - `tests/booking.test.ts`: concurrencia, margen, cancelación y horario.
+
+La sede es Medellín, Colombia. El número público inicial es +57 3217168203 y se puede editar en Página web. La web abre WhatsApp mediante un enlace; no envía mensajes automáticamente. Los precios nuevos se ingresan en COP. El material gráfico no define precios ni duraciones reservables.

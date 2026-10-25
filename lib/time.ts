@@ -1,4 +1,4 @@
-export const ZONE='America/New_York';
+export const ZONE='America/Bogota';
 const localFormatter=new Intl.DateTimeFormat('en-CA',{timeZone:ZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
 export function localParts(value:Date|string) {
   const p=Object.fromEntries(localFormatter.formatToParts(new Date(value)).map(x=>[x.type,x.value]));
@@ -18,5 +18,5 @@ export function candidates(date:string, open:string, close:string, duration:numb
   }
   return result;
 }
-export const money=(cents:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(cents/100);
+export const money=(cents:number)=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP'}).format(cents/100);
 export const displayTime=(date:string|Date)=>new Intl.DateTimeFormat('es',{timeZone:ZONE,hour:'numeric',minute:'2-digit'}).format(new Date(date));

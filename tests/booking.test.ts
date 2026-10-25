@@ -9,9 +9,9 @@ process.env.LOCAL_DB_PATH=dir;
 const {query,db}=await import('../lib/db');
 const {available,reserve}=await import('../lib/booking');
 after(async()=>{await (db() as any).close();await rm(dir,{recursive:true,force:true});});
-test('Boston slots follow summer and winter offsets',()=>{
+test('Medellin slots stay at UTC minus five throughout the year',()=>{
   const winter=candidates('2030-01-10','09:00','10:00',30,0),summer=candidates('2030-07-10','09:00','10:00',30,0);
-  assert.equal(winter[0],'2030-01-10T14:00:00.000Z');assert.equal(summer[0],'2030-07-10T13:00:00.000Z');
+  assert.equal(winter[0],'2030-01-10T14:00:00.000Z');assert.equal(summer[0],'2030-07-10T14:00:00.000Z');
   assert.equal(localParts(winter.at(-1)!).time,'09:30');
 });
 test('reservation concurrency, buffers, cancellation and inactive services',async()=>{

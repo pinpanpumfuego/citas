@@ -19,7 +19,7 @@ export async function GET(req:NextRequest){
       const services=await query('SELECT * FROM services ORDER BY id');
       const date=req.nextUrl.searchParams.get('date')||new Date().toISOString().slice(0,10);
       if(!validDate(date))return NextResponse.json({error:'Fecha inválida'},{status:400});
-      const bookings=await query("SELECT * FROM bookings WHERE (start_at AT TIME ZONE 'America/New_York')::date=$1::date ORDER BY start_at",[date]);
+      const bookings=await query("SELECT * FROM bookings WHERE (start_at AT TIME ZONE 'America/Bogota')::date=$1::date ORDER BY start_at",[date]);
       return NextResponse.json({settings,services,bookings,local:localMode()});
     }
     const [settings]=await query('SELECT name,description,address,phone,open_time,close_time,weekdays FROM settings WHERE id=1');
@@ -49,7 +49,7 @@ export async function POST(req:NextRequest){
     if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
     if(action==='service'){
       const name=clean(b.name,100),description=clean(b.description,500);
-      if(!name||!int(b.price,0,10000000)||!int(b.duration,5,480)||!int(b.buffer,0,120)||typeof b.active!=='boolean')throw new Error('Revisa los datos del servicio.');
+      if(!name||!int(b.price,0,1000000000)||!int(b.duration,5,480)||!int(b.buffer,0,120)||typeof b.active!=='boolean')throw new Error('Revisa los datos del servicio.');
       if(b.id){if(!int(b.id,1,2147483647))throw new Error('Servicio inválido.');await query('UPDATE services SET name=$1,description=$2,price=$3,duration=$4,buffer=$5,active=$6 WHERE id=$7',[name,description,b.price,b.duration,b.buffer,b.active,b.id]);}
       else await query('INSERT INTO services(name,description,price,duration,buffer,active) VALUES($1,$2,$3,$4,$5,$6)',[name,description,b.price,b.duration,b.buffer,b.active]);
     } else if(action==='settings'){
