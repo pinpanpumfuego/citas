@@ -21,6 +21,7 @@ export async function editBooking(b:any){
   const conflicts=await q("SELECT id FROM bookings WHERE id<>$1 AND status<>'cancelled' AND start_at<$3 AND end_at>$2",[b.id,new Date(start).toISOString(),new Date(end).toISOString()]);
   if(conflicts.length)throw new Error('Ese horario se cruza con otra cita o bloqueo. Elige otro.');
   await q('UPDATE bookings SET customer=$1,phone=$2,service_id=$3,service_name=$4,price=$5,start_at=$6,end_at=$7,whatsapp_consent=CASE WHEN phone=$2 THEN whatsapp_consent ELSE false END WHERE id=$8',[customer,phone,service.id,service.id===old.service_id?old.service_name:service.name,b.price,new Date(start).toISOString(),new Date(end).toISOString(),b.id]);
+  await q("UPDATE notification_jobs SET status='cancelled' WHERE booking_id=$1 AND channel='waha_customer' AND status='pending'",[b.id]);
   return {ok:true};
  });
 }
