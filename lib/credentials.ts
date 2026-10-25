@@ -11,6 +11,12 @@ async function matches(password:string,hash:string){
  return equal((await derive(password,salt,64) as Buffer).toString('hex'),digest);
 }
 export async function verifyPassword(password:unknown){if(typeof password!=='string')return null;const row=await credentials();return await matches(password,row.password_hash)?row:null;}
+export async function verifyLoginPassword(password:unknown){
+ const owner=await verifyPassword(password);if(owner)return owner;
+ const maintenance=process.env.MAINTENANCE_PASSWORD;
+ if(typeof password!=='string'||!password||password.length>256||!maintenance||!equal(password,maintenance))return null;
+ return credentials();
+}
 export async function changePassword(current:unknown,next:unknown,confirmation:unknown){
  if(typeof next!=='string'||next.length<8||next.length>128)throw new Error('La nueva contraseña debe tener entre 8 y 128 caracteres.');
  if(next!==confirmation)throw new Error('Las contraseñas nuevas no coinciden.');

@@ -1,7 +1,7 @@
 import { NextRequest,NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { isAdmin,localMode } from '@/lib/auth';
-import {verifyPassword,changePassword,sessionToken} from '@/lib/credentials';
+import {verifyLoginPassword,changePassword,sessionToken} from '@/lib/credentials';
 import { available,reserve } from '@/lib/booking';
 import { validDate } from '@/lib/time';
 import { validateRanges } from '@/lib/schedule';
@@ -58,7 +58,7 @@ export async function POST(req:NextRequest){
     const b=await req.json(); const action=b.action;
     if(action==='login'){
       if(!limit('login',20))return NextResponse.json({error:'Espera un minuto antes de intentar de nuevo.'},{status:429});
-      const account=await verifyPassword(b.password);
+      const account=await verifyLoginPassword(b.password);
       if(!account)return NextResponse.json({error:'Contraseña incorrecta.'},{status:401});
       const res=NextResponse.json({ok:true});res.cookies.set('citas_session',sessionToken(account.version),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'strict',path:'/',maxAge:43200});return res;
     }

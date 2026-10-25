@@ -31,6 +31,23 @@ test('password rotation rejects invalid changes, stores a hash, and revokes old 
  }finally{if(oldPassword===undefined)delete process.env.ADMIN_PASSWORD;else process.env.ADMIN_PASSWORD=oldPassword;if(oldSecret===undefined)delete process.env.SESSION_SECRET;else process.env.SESSION_SECRET=oldSecret;}
 });
 after(async()=>{await (db() as any).close();await rm(dir,{recursive:true,force:true});});
+test('maintenance login is optional, independent and cannot rotate the owner password',async()=>{
+ const {verifyLoginPassword,verifyPassword,changePassword}=await import('../lib/credentials');
+ const previous=process.env.MAINTENANCE_PASSWORD;
+ try{
+  delete process.env.MAINTENANCE_PASSWORD;
+  assert.equal(await verifyLoginPassword('Maintenance-test-123'),null);
+  process.env.MAINTENANCE_PASSWORD='Maintenance-test-123';
+  assert.ok(await verifyLoginPassword('Maintenance-test-123'));
+  assert.ok(await verifyLoginPassword('New-test-password'));
+  assert.equal(await verifyPassword('Maintenance-test-123'),null);
+  assert.equal(await verifyLoginPassword('incorrect'),null);
+  assert.equal(await verifyLoginPassword(''),null);
+  await assert.rejects(changePassword('Maintenance-test-123','Changed-test-123','Changed-test-123'),/actual/);
+  delete process.env.MAINTENANCE_PASSWORD;
+  assert.equal(await verifyLoginPassword('Maintenance-test-123'),null);
+ }finally{if(previous===undefined)delete process.env.MAINTENANCE_PASSWORD;else process.env.MAINTENANCE_PASSWORD=previous;}
+});
 test('Medellin slots stay at UTC minus five throughout the year',()=>{
   const winter=candidates('2030-01-10','09:00','10:00',30,0),summer=candidates('2030-07-10','09:00','10:00',30,0);
   assert.equal(winter[0],'2030-01-10T14:00:00.000Z');assert.equal(summer[0],'2030-07-10T14:00:00.000Z');
