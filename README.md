@@ -80,7 +80,7 @@ Validación: `npm test`, `npm run build`. Las pruebas usan una base aislada y pr
 
 Todas las fechas sin entrada explícita en `schedule.dates` quedan cerradas. `scheduleFor` ignora los antiguos horarios semanales, incluso en bases existentes; las fechas que ya se abrieron expresamente y las reservas/bloqueos se conservan. El endpoint `weekly_schedule` se rechaza para impedir que una pestaña antigua reabra semanas indefinidas.
 
-Horarios → Abrir un período permite elegir inicio/fin inclusivos (hasta un año), días de la semana y una o varias franjas. Primero se muestra un resumen; solo la confirmación abre fechas. Por defecto conserva cualquier fecha con configuración previa (incluidos cierres). La opción de sustituir afecta únicamente a los días seleccionados, sin borrar citas ni bloqueos. Los días no seleccionados conservan su estado. La agenda permite editar/cerrar una fecha concreta. El horizonte público de reserva sigue siendo 90 días.
+Horarios → Abrir un período permite elegir inicio/fin inclusivos (hasta un año), días de la semana y una o varias franjas. La vista simplificada abre las fechas nuevas con el botón Abrir horario. Si encuentra días configurados, pregunta si conservarlos o actualizarlos. Por defecto conserva cualquier fecha con configuración previa (incluidos cierres). La opción de sustituir afecta únicamente a los días seleccionados, sin borrar citas ni bloqueos. Los días no seleccionados conservan su estado. La agenda permite editar/cerrar una fecha concreta. El horizonte público de reserva sigue siendo 90 días.
 
 ## Iconos
 
