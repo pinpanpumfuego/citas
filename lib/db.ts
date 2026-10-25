@@ -1,3 +1,4 @@
+import {paymentSchema} from './payment-schema';
 import { PGlite } from '@electric-sql/pglite';
 import { Pool } from 'pg';
 import path from 'node:path';
@@ -41,8 +42,9 @@ export async function ready() {
       `CREATE TABLE IF NOT EXISTS whatsapp_chats (chat text PRIMARY KEY, state jsonb NOT NULL DEFAULT '{}', updated_at timestamptz NOT NULL DEFAULT now())`,
       `CREATE TABLE IF NOT EXISTS whatsapp_inbox (id text PRIMARY KEY, chat text NOT NULL, phone text NOT NULL DEFAULT '', body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), processed boolean NOT NULL DEFAULT false)`,
       `CREATE INDEX IF NOT EXISTS whatsapp_inbox_pending ON whatsapp_inbox(created_at) WHERE processed=false`,
-      `CREATE OR REPLACE FUNCTION enqueue_booking_notifications() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='appointment' AND NEW.status='confirmed' THEN INSERT INTO notification_jobs(booking_id,channel,target) SELECT NEW.id,'email',config->>'emailTo' FROM notification_config WHERE config->>'emailEnabled'='true' UNION ALL SELECT NEW.id,'whatsapp',config->>'whatsappTo' FROM notification_config WHERE config->>'whatsappEnabled'='true' UNION ALL SELECT NEW.id,'push',id::text FROM push_devices UNION ALL SELECT NEW.id,'waha_customer',NEW.phone FROM whatsapp_config WHERE enabled=true AND NEW.whatsapp_consent=true AND NEW.source='web'; END IF; RETURN NEW; END $$`,
-      `CREATE OR REPLACE TRIGGER booking_notifications AFTER INSERT ON bookings FOR EACH ROW EXECUTE FUNCTION enqueue_booking_notifications()`
+      ...paymentSchema,
+      `CREATE OR REPLACE FUNCTION enqueue_booking_notifications() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='appointment' AND (TG_OP='INSERT' OR (OLD.status='pending_payment' AND NEW.status='confirmed')) THEN IF NEW.status IN ('confirmed','pending_payment') THEN INSERT INTO notification_jobs(booking_id,channel,target) SELECT NEW.id,'email',config->>'emailTo' FROM notification_config WHERE config->>'emailEnabled'='true' UNION ALL SELECT NEW.id,'whatsapp',config->>'whatsappTo' FROM notification_config WHERE config->>'whatsappEnabled'='true' UNION ALL SELECT NEW.id,'push',id::text FROM push_devices ON CONFLICT DO NOTHING; END IF; IF NEW.status='confirmed' THEN INSERT INTO notification_jobs(booking_id,channel,target) SELECT NEW.id,'waha_customer',NEW.phone FROM whatsapp_config WHERE enabled=true AND NEW.whatsapp_consent=true AND (NEW.source='web' OR TG_OP='UPDATE') ON CONFLICT DO NOTHING; END IF; END IF; RETURN NEW; END $$`,
+      `CREATE OR REPLACE TRIGGER booking_notifications AFTER INSERT OR UPDATE OF status ON bookings FOR EACH ROW EXECUTE FUNCTION enqueue_booking_notifications()`
     ]) await db().query(sql);
   })();
   await globalDb.citasReady;

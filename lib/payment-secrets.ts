@@ -1,0 +1,4 @@
+import {createHash,randomBytes,createCipheriv,createDecipheriv} from 'node:crypto';
+function key(){const secret=process.env.SESSION_SECRET||(process.env.NODE_ENV!=='production'?'development-payments':null);if(!secret)throw new Error('Falta la clave del servidor.');return createHash('sha256').update('payments:'+secret).digest();}
+export function seal(value:unknown){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key(),iv);return Buffer.concat([iv,cipher.update(JSON.stringify(value)),cipher.final(),cipher.getAuthTag()]).toString('base64');}
+export function unseal(value:string):any{if(!value)return {};const b=Buffer.from(value,'base64'),decipher=createDecipheriv('aes-256-gcm',key(),b.subarray(0,12));decipher.setAuthTag(b.subarray(-16));return JSON.parse(Buffer.concat([decipher.update(b.subarray(12,-16)),decipher.final()]).toString());}

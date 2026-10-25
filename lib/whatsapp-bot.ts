@@ -1,3 +1,5 @@
+import {paymentLink} from './payments';
+import {depositAmount} from './deposit';
 import {query,transaction,Query} from './db';
 import {available,reserve} from './booking';
 import {today,displayTime,money,localParts} from './time';
@@ -5,7 +7,7 @@ const dateLabel=(d:string)=>new Intl.DateTimeFormat('es-CO',{weekday:'long',day:
 const numbered=(items:string[])=>items.map((x,i)=>`${i+1}. ${x}`).join('\n');
 const help='\nResponde con el número de la opción. Escribe MENÚ para empezar de nuevo o ASESOR para atención personal.';
 const choice=(body:string,items:any[])=>/^\d{1,3}$/.test(body)?items[Number(body)-1]:undefined;
-export async function confirmation(q:Query,id:string){const [b]=await q('SELECT * FROM bookings WHERE id=$1',[id]);const [s]=await q('SELECT name,address,time_format FROM settings WHERE id=1');return `Hola, ${b.customer}. Tu cita en ${s.name} está confirmada.\n${b.service_name}\n${dateLabel(localParts(b.start_at).date)} · ${displayTime(b.start_at,s.time_format)} (Medellín)\n${s.address}\nReferencia: ${id}\nPara solicitar un cambio, responde ASESOR.`;}
+export async function confirmation(q:Query,id:string){const [b]=await q('SELECT * FROM bookings WHERE id=$1',[id]);if(b.status==='pending_payment')return `Hola, ${b.customer}. Tu cita está pendiente del anticipo de ${money(b.deposit_amount)}. Total: ${money(b.price)}. Saldo después del anticipo: ${money(b.price-b.deposit_amount)}. Paga y consulta el estado aquí: ${paymentLink(id)}. La cita se confirma al verificar el pago.`;if(b.status!=='confirmed')return 'Esta cita no está confirmada. Escribe ASESOR para consultar.';const [s]=await q('SELECT name,address,time_format FROM settings WHERE id=1');return `Hola, ${b.customer}. Tu cita en ${s.name} está confirmada.\n${b.service_name}\n${dateLabel(localParts(b.start_at).date)} · ${displayTime(b.start_at,s.time_format)} (Medellín)\n${s.address}\nReferencia: ${id}\nPara solicitar un cambio, responde ASESOR.`;}
 export async function botStep(q:Query,state:any,body:string,phone:string):Promise<{state:any;text?:string;bookingId?:string}>{
  const [preferences]=await q('SELECT time_format FROM settings WHERE id=1');
  const showTime=(value:string|Date)=>displayTime(value,preferences?.time_format||'24h');
@@ -15,11 +17,11 @@ export async function botStep(q:Query,state:any,body:string,phone:string):Promis
  const restart=['reservar','reserva','menu','cita'].includes(word);
  if(!state.step&&!restart)return {state};
  if(state.step==='paused'&&!restart)return {state};
- async function services(){const list=await q('SELECT id,name,price FROM services WHERE active=true ORDER BY id');return {state:{step:'service',services:list},text:list.length?'Soy el asistente de reservas. Elige un servicio:\n'+numbered(list.map(s=>s.name+' · '+money(s.price)))+help:'No hay servicios disponibles en este momento. Escribe ASESOR para consultar.'};}
+ async function services(){const list=await q('SELECT id,name,price,deposit_mode,deposit_value FROM services WHERE active=true ORDER BY id');return {state:{step:'service',services:list},text:list.length?'Soy el asistente de reservas. Elige un servicio:\n'+numbered(list.map(s=>s.name+' · '+money(s.price)))+help:'No hay servicios disponibles en este momento. Escribe ASESOR para consultar.'};}
  async function dates(service:any,offset=0){
  const [settings]=await q('SELECT schedule FROM settings WHERE id=1');const candidates=Object.keys(settings.schedule?.dates||{}).filter(d=>d>=today()&&Date.parse(d)<=Date.now()+90*86400000).sort();const dates:string[]=[];
  for(const d of candidates)if((await available(service.id,d,q)).length)dates.push(d);
- const page=dates.slice(offset,offset+7);if(!page.length)return {state:{step:'service',services:await q('SELECT id,name,price FROM services WHERE active=true ORDER BY id')},text:'No quedan días disponibles para este servicio. Escribe MENÚ para elegir otro servicio o ASESOR para consultar.'};
+ const page=dates.slice(offset,offset+7);if(!page.length)return {state:{step:'service',services:await q('SELECT id,name,price,deposit_mode,deposit_value FROM services WHERE active=true ORDER BY id')},text:'No quedan días disponibles para este servicio. Escribe MENÚ para elegir otro servicio o ASESOR para consultar.'};
  return {state:{step:'date',service,dates:page,offset},text:service.name+'\nElige el día:\n'+numbered(page.map(dateLabel))+(dates.length>offset+7?'\nEscribe MÁS para ver otros días.':'')+help};
  }
  async function times(service:any,date:string){const slots=await available(service.id,date,q);if(!slots.length)return dates(service);return {state:{step:'slot',service,date,slots},text:dateLabel(date)+'\nElige la hora (Medellín):\n'+numbered(slots.map(showTime))+help};}
@@ -30,15 +32,16 @@ export async function botStep(q:Query,state:any,body:string,phone:string):Promis
  if(state.step==='name'){
  if(body.length<3||body.length>100||!/[a-záéíóúñ]/i.test(body))return {state,text:'Escribe tu nombre completo (máximo 100 caracteres).'};
  if(!phone)return {state:{step:'paused'},text:'No hemos podido identificar tu teléfono. Puedes reservar en https://www.laprincesadelascejas.com o escribir aquí para atención personal.'};
- return {state:{...state,step:'confirm',name:body},text:`Revisa tu cita:\n${state.service.name} · ${money(state.service.price)}\n${dateLabel(state.date)} · ${showTime(state.start)} (Medellín)\nNombre: ${body}\n\nEscribe CONFIRMAR para guardar la cita y recibir la confirmación por WhatsApp. Usaremos tu nombre y teléfono para gestionar esta reserva. SALIR abandona este proceso.`};}
+ const [pc]=await q('SELECT enabled FROM payment_config WHERE id=1');const amount=pc.enabled?depositAmount(state.service.price,state.service.deposit_mode,state.service.deposit_value):0;
+ return {state:{...state,step:'confirm',name:body,expectedDeposit:amount},text:`Revisa tu cita:\n${state.service.name} · ${money(state.service.price)}\n${dateLabel(state.date)} · ${showTime(state.start)} (Medellín)\nNombre: ${body}\n\n${amount?'Anticipo obligatorio: '+money(amount)+'. Recibirás un enlace para pagar. La cita se confirma cuando se verifica el pago.':'Sin anticipo.'} Escribe CONFIRMAR para continuar. Usaremos tu nombre y teléfono para gestionar esta reserva. SALIR abandona este proceso.`};}
  if(state.step==='confirm'){
  if(word!=='confirmar')return {state,text:'Escribe CONFIRMAR para guardar tu cita, MENÚ para cambiarla o SALIR para abandonar.'};
  const [current]=await q('SELECT * FROM services WHERE id=$1 AND active=true',[state.service.id]);
  if(!current||current.price!==state.service.price||current.name!==state.service.name)return services();
  if(!(await available(current.id,state.date,q)).includes(state.start))return times(current,state.date);
- const [count]=await q("SELECT count(*)::int AS n FROM bookings WHERE phone=$1 AND status='confirmed' AND start_at>now()",['+'+phone]);if(count.n>=3)return {state:{step:'paused'},text:'Ya tienes varias citas pendientes. Escribe aquí para que el negocio te ayude con otra reserva.'};
+ const [count]=await q("SELECT count(*)::int AS n FROM bookings WHERE phone=$1 AND status IN ('confirmed','pending_payment') AND start_at>now()",['+'+phone]);if(count.n>=3)return {state:{step:'paused'},text:'Ya tienes varias citas pendientes. Escribe aquí para que el negocio te ayude con otra reserva.'};
  await q('SAVEPOINT bot_booking');let id:string;
- try{id=await reserve({serviceId:current.id,date:state.date,start:state.start,customer:state.name,phone:'+'+phone,whatsappConsent:true,source:'whatsapp'},q);await q('RELEASE SAVEPOINT bot_booking');}
+ try{id=await reserve({serviceId:current.id,date:state.date,start:state.start,customer:state.name,phone:'+'+phone,whatsappConsent:true,source:'whatsapp',expectedPrice:state.service.price,expectedDeposit:state.expectedDeposit},q);await q('RELEASE SAVEPOINT bot_booking');}
  catch(e:any){await q('ROLLBACK TO SAVEPOINT bot_booking');if(/horario/.test(e.message))return times(current,state.date);throw e;}
  return {state:{step:'done'},text:await confirmation(q,id),bookingId:id};
  }

@@ -1,3 +1,5 @@
+import {depositAmount} from '@/lib/deposit';
+import {expirePayments,paymentLink,paymentSettings,savePaymentSettings,reviewPayment} from '@/lib/payments';
 import { NextRequest,NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { isAdmin,localMode } from '@/lib/auth';
@@ -19,6 +21,7 @@ function int(v:unknown,min:number,max:number){return Number.isInteger(v)&&Number
 export async function GET(req:NextRequest){
   try {
     const mode=req.nextUrl.searchParams.get('mode');
+    if(mode==='payments'){if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});return NextResponse.json(await paymentSettings(true));}
     if(mode==='reservations'){
       if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
       return NextResponse.json(await listReservations(req.nextUrl.searchParams.get('filter')||'all',req.nextUrl.searchParams.get('search')||'',Number(req.nextUrl.searchParams.get('page')||1)));
@@ -26,7 +29,7 @@ export async function GET(req:NextRequest){
     if(mode==='slots'){const date=req.nextUrl.searchParams.get('date')||'';return NextResponse.json({slots:await available(Number(req.nextUrl.searchParams.get('service')),date)});}
     if(mode==='calendar'){
       if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
-      const month=req.nextUrl.searchParams.get('month')||'';
+      await expirePayments();const month=req.nextUrl.searchParams.get('month')||'';
       if(!/^\d{4}-\d{2}$/.test(month)||!validDate(month+'-01'))return NextResponse.json({error:'Mes inválido'},{status:400});
       const rows=await query("SELECT kind,start_at,end_at FROM bookings WHERE status<>'cancelled' AND start_at < (($1::date + interval '1 month')::timestamp AT TIME ZONE 'America/Bogota') AND end_at > ($1::date::timestamp AT TIME ZONE 'America/Bogota')",[month+'-01']);
       const days:Record<string,{appointments:number;blocks:number}>={};
@@ -35,6 +38,7 @@ export async function GET(req:NextRequest){
     }
     if(mode==='admin'){
       if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
+      await expirePayments();
       const [settings]=await query('SELECT * FROM settings WHERE id=1');
       const services=await query('SELECT * FROM services ORDER BY id');
       const date=req.nextUrl.searchParams.get('date')||new Date().toISOString().slice(0,10);
@@ -45,7 +49,7 @@ export async function GET(req:NextRequest){
     }
     const [settings]=await query('SELECT name,description,address,phone,open_time,close_time,weekdays,time_format FROM settings WHERE id=1');
     const [wa]=await query('SELECT enabled FROM whatsapp_config WHERE id=1');
-    return NextResponse.json({settings,whatsappEnabled:wa.enabled,services:await query('SELECT * FROM services WHERE active=true ORDER BY id')});
+    return NextResponse.json({settings,payments:await paymentSettings(),whatsappEnabled:wa.enabled,services:await query('SELECT * FROM services WHERE active=true ORDER BY id')});
   }catch(e){console.error('Data query failed',e instanceof Error?e.message:'error');return NextResponse.json({error:'No pudimos cargar los datos. Intenta nuevamente.'},{status:500});}
 }
 export async function POST(req:NextRequest){
@@ -68,9 +72,11 @@ export async function POST(req:NextRequest){
       const customer=clean(b.customer,100),phone=clean(b.phone,25);
       if(b.website || customer.length<2 || !/^\+?[\d ()-]{7,25}$/.test(phone)||!int(b.serviceId,1,2147483647)||!validDate(b.date)||typeof b.start!=='string')throw new Error('Revisa el nombre, teléfono y horario.');
       const consent=b.whatsappConsent==='on';const recipient=consent?normalizedPhone(phone):phone;if(consent&&!recipient)throw new Error('Escribe el teléfono con prefijo de país, por ejemplo +57 3001234567.');
-      const id=await reserve({serviceId:b.serviceId,date:b.date,start:b.start,customer,phone:consent?'+'+recipient:phone,whatsappConsent:consent});const jobs=await query("SELECT id FROM notification_jobs WHERE booking_id=$1 AND channel='waha_customer'",[id]);return NextResponse.json({ok:true,id,whatsappQueued:jobs.length>0});
+      const id=await reserve({serviceId:b.serviceId,date:b.date,start:b.start,customer,phone:consent?'+'+recipient:phone,whatsappConsent:consent,expectedPrice:b.expectedPrice,expectedDeposit:b.expectedDeposit});const jobs=await query("SELECT id FROM notification_jobs WHERE booking_id=$1 AND channel='waha_customer'",[id]);const [booking]=await query('SELECT status,deposit_amount FROM bookings WHERE id=$1',[id]);return NextResponse.json({ok:true,id,status:booking.status,depositAmount:booking.deposit_amount,paymentUrl:booking.status==='pending_payment'?paymentLink(id):null,whatsappQueued:jobs.length>0});
     }
     if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
+    if(action==='payment_settings')return NextResponse.json(await savePaymentSettings(b));
+    if(action==='review_payment')return NextResponse.json(await reviewPayment(b.id,b.approve,String(b.note||'')));
     if(action==='edit_booking')return NextResponse.json(await editBooking(b));
     if(action==='change_password'){
       if(localMode())return NextResponse.json({error:'Configura el acceso protegido antes de cambiar la contraseña.'},{status:400});
@@ -86,8 +92,9 @@ export async function POST(req:NextRequest){
     } else if(action==='service'){
       const name=clean(b.name,100),description=clean(b.description,500);
       if(!name||!int(b.price,0,1000000000)||!int(b.duration,5,480)||!int(b.buffer,0,120)||typeof b.active!=='boolean')throw new Error('Revisa los datos del servicio.');
-      if(b.id){if(!int(b.id,1,2147483647))throw new Error('Servicio inválido.');await query('UPDATE services SET name=$1,description=$2,price=$3,duration=$4,buffer=$5,active=$6 WHERE id=$7',[name,description,b.price,b.duration,b.buffer,b.active,b.id]);}
-      else await query('INSERT INTO services(name,description,price,duration,buffer,active) VALUES($1,$2,$3,$4,$5,$6)',[name,description,b.price,b.duration,b.buffer,b.active]);
+      const [prior]=b.id?await query('SELECT deposit_mode,deposit_value FROM services WHERE id=$1',[b.id]):[];const depositMode=b.deposit_mode??prior?.deposit_mode??'none',depositValue=Number(b.deposit_value??prior?.deposit_value??0);depositAmount(b.price,depositMode,depositValue);
+      if(b.id){if(!int(b.id,1,2147483647))throw new Error('Servicio inválido.');await query('UPDATE services SET name=$1,description=$2,price=$3,duration=$4,buffer=$5,active=$6,deposit_mode=$8,deposit_value=$9 WHERE id=$7',[name,description,b.price,b.duration,b.buffer,b.active,b.id,depositMode,depositValue]);}
+      else await query('INSERT INTO services(name,description,price,duration,buffer,active,deposit_mode,deposit_value) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[name,description,b.price,b.duration,b.buffer,b.active,depositMode,depositValue]);
      } else if(action==='weekly_schedule'){
       throw new Error('Abre fechas indicando un inicio y un fin. Ya no hay horarios semanales indefinidos.');
     } else if(action==='date_schedule'){
@@ -101,7 +108,7 @@ export async function POST(req:NextRequest){
       await query('UPDATE settings SET name=$1,description=$2,address=$3,phone=$4,open_time=$5,close_time=$6,weekdays=$7 WHERE id=1',[name,description,address,phone,b.open_time,b.close_time,[...new Set(b.weekdays)]]);
     } else if(action==='status'){
       if(!['cancelled','completed'].includes(b.status))throw new Error('Estado inválido.');
-      await query("UPDATE bookings SET status=$1 WHERE id=$2 AND status='confirmed'",[b.status,b.id]);
+      await query("UPDATE bookings SET status=$1 WHERE id=$2 AND (status='confirmed' OR (status='pending_payment' AND $1='cancelled'))",[b.status,b.id]);
     } else if(action==='block'){
       if(!b.start||!b.end||!Number.isFinite(Date.parse(b.start))||!Number.isFinite(Date.parse(b.end))||Date.parse(b.end)<=Date.parse(b.start))throw new Error('Revisa el inicio y fin del bloqueo.');
       await query("INSERT INTO bookings(id,service_name,price,customer,phone,start_at,end_at,kind) VALUES($1,$2,0,'','',$3,$4,'block')",[randomUUID(),clean(b.reason,100)||'Tiempo personal',b.start,b.end]);

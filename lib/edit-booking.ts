@@ -9,6 +9,7 @@ export async function editBooking(b:any){
  return transaction(async q=>{
   const [old]=await q("SELECT * FROM bookings WHERE id=$1 AND kind='appointment' FOR UPDATE",[b.id]);
   if(!old||old.status!=='confirmed')throw new Error('Solo puedes modificar citas confirmadas.');
+  if(old.deposit_amount>0&&(b.price!==old.price||b.serviceId!==old.service_id))throw new Error('Esta cita tiene un anticipo. Conserva el precio y el servicio para mantener el registro del pago.');
   const [service]=await q('SELECT * FROM services WHERE id=$1',[b.serviceId]);
   if(!service||(!service.active&&service.id!==old.service_id))throw new Error('El servicio no está disponible.');
   const start=Date.parse(b.date+'T'+b.time+':00-05:00'),end=start+b.duration*60000;
