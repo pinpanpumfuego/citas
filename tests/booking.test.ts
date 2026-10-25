@@ -35,3 +35,27 @@ test('blocks prevent overlap and closed weekdays prevent bookings',async()=>{
   await assert.rejects(()=>reserve({serviceId:1,date,start:slots[0],customer:'Prueba',phone:'+16175550100'}));
   await query("UPDATE settings SET weekdays='{}' WHERE id=1");assert.deepEqual(await available(1,date),[]);
 });
+
+test('split schedules and date overrides respect service buffers and existing bookings',async()=>{
+ const {validateRanges}=await import('../lib/schedule');
+ assert.throws(()=>validateRanges([{start:'10:00',end:'12:00'},{start:'11:00',end:'13:00'}]));
+ assert.throws(()=>validateRanges([{start:'18:00',end:'09:00'}]));
+ const [s]=await query("INSERT INTO services(name,price,duration,buffer) VALUES('Largo',20000,90,30) RETURNING id");
+ const date=new Date(Date.now()+6*86400000).toISOString().slice(0,10);
+ const weekly=Array.from({length:7},()=>[{start:'09:00',end:'11:00'},{start:'14:00',end:'16:00'}]);
+ const schedule={weekly,dates:{} as Record<string,{start:string;end:string}[]>};
+ await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify(schedule)]);
+ let slots=await available(s.id,date);assert.deepEqual(slots.map(t=>localParts(t).time),['09:00','14:00']);
+ await reserve({serviceId:s.id,date,start:slots[0],customer:'Prueba',phone:'+573217168203'});
+ assert.deepEqual((await available(s.id,date)).map(t=>localParts(t).time),['14:00']);
+ schedule.dates[date]=[];
+ await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify(schedule)]);
+ assert.deepEqual(await available(s.id,date),[]);
+ schedule.weekly=Array.from({length:7},()=>[]);
+ schedule.dates[date]=[{start:'16:00',end:'18:00'}];
+ await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify(schedule)]);
+ assert.deepEqual((await available(s.id,date)).map(t=>localParts(t).time),['16:00']);
+ delete schedule.dates[date];
+ await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify(schedule)]);
+ assert.deepEqual(await available(s.id,date),[]);
+});

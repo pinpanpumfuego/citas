@@ -3,6 +3,7 @@ import { query } from '@/lib/db';
 import { isAdmin,localMode,equal,token } from '@/lib/auth';
 import { available,reserve } from '@/lib/booking';
 import { validDate } from '@/lib/time';
+import { scheduleFor,validateRanges } from '@/lib/schedule';
 import { randomUUID } from 'node:crypto';
 export const dynamic='force-dynamic';
 const attempts=new Map<string,{count:number;until:number}>();
@@ -52,7 +53,19 @@ export async function POST(req:NextRequest){
       if(!name||!int(b.price,0,1000000000)||!int(b.duration,5,480)||!int(b.buffer,0,120)||typeof b.active!=='boolean')throw new Error('Revisa los datos del servicio.');
       if(b.id){if(!int(b.id,1,2147483647))throw new Error('Servicio inválido.');await query('UPDATE services SET name=$1,description=$2,price=$3,duration=$4,buffer=$5,active=$6 WHERE id=$7',[name,description,b.price,b.duration,b.buffer,b.active,b.id]);}
       else await query('INSERT INTO services(name,description,price,duration,buffer,active) VALUES($1,$2,$3,$4,$5,$6)',[name,description,b.price,b.duration,b.buffer,b.active]);
+     } else if(action==='weekly_schedule'){
+      if(!Array.isArray(b.weekly)||b.weekly.length!==7)throw new Error('Revisa los siete días de la semana.');
+      const weekly=b.weekly.map(validateRanges);
+      const [s]=await query('SELECT * FROM settings WHERE id=1');
+      await query("UPDATE settings SET schedule=jsonb_set($1::jsonb,'{weekly}',$2::jsonb) WHERE id=1",[JSON.stringify(scheduleFor(s)),JSON.stringify(weekly)]);
+    } else if(action==='date_schedule'){
+      if(!validDate(b.date))throw new Error('Elige una fecha válida.');
+      const [s]=await query('SELECT * FROM settings WHERE id=1');
+      const schedule=scheduleFor(s);
+      if(b.reset===true)delete schedule.dates[b.date];else schedule.dates[b.date]=validateRanges(b.ranges);
+      await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify(schedule)]);
     } else if(action==='settings'){
+
       const name=clean(b.name,100),description=clean(b.description,1000),address=clean(b.address,300),phone=clean(b.phone,25);
       if(!name||!/^([01]\d|2[0-3]):[0-5]\d$/.test(b.open_time)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(b.close_time)||b.open_time>=b.close_time||!Array.isArray(b.weekdays)||!b.weekdays.every((x:unknown)=>int(x,0,6)))throw new Error('Revisa el horario y los días de atención.');
       await query('UPDATE settings SET name=$1,description=$2,address=$3,phone=$4,open_time=$5,close_time=$6,weekdays=$7 WHERE id=1',[name,description,address,phone,b.open_time,b.close_time,[...new Set(b.weekdays)]]);

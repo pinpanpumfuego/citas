@@ -1,3 +1,4 @@
+import { scheduleFor } from './schedule';
 import { query } from './db';
 import { candidates, validDate } from './time';
 import { randomUUID } from 'node:crypto';
@@ -6,10 +7,11 @@ export async function available(serviceId:number,date:string) {
   const [service]=await query('SELECT * FROM services WHERE id=$1 AND active=true',[serviceId]);
   if(!service) return [];
   const [s]=await query('SELECT * FROM settings WHERE id=1');
-  if(!s.weekdays.includes(new Date(`${date}T12:00:00Z`).getUTCDay()))return [];
+  const schedule=scheduleFor(s);
+  const ranges=schedule.dates[date]??schedule.weekly[new Date(date+'T12:00:00Z').getUTCDay()];
   const duration=service.duration+service.buffer;
   const rows=await query("SELECT start_at,end_at FROM bookings WHERE status<>'cancelled' AND start_at < $1::date + interval '2 days' AND end_at > $1::date",[date]);
-  return candidates(date,s.open_time,s.close_time,duration).filter(t=>!rows.some(b=>Date.parse(t)<new Date(b.end_at).getTime() && Date.parse(t)+duration*60000>new Date(b.start_at).getTime()));
+  return [...new Set(ranges.flatMap(r=>candidates(date,r.start,r.end,duration)))].sort().filter(t=>!rows.some(b=>Date.parse(t)<new Date(b.end_at).getTime() && Date.parse(t)+duration*60000>new Date(b.start_at).getTime()));
 }
 export async function reserve(input:{serviceId:number;date:string;start:string;customer:string;phone:string}) {
   if(!(await available(input.serviceId,input.date)).includes(input.start))throw new Error('Ese horario ya no está disponible. Elige otro.');
