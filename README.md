@@ -64,11 +64,11 @@ WhatsApp no envía ni recibe mensajes: falta configuración de Meta Business, we
 - `lib/time.ts`: zona horaria y cálculo de horarios.
 - `tests/booking.test.ts`: concurrencia, margen, cancelación y horario.
 
-La sede es Medellín, Colombia. El número público inicial es +57 3217168203 y se puede editar en Página web. La web abre WhatsApp mediante un enlace; no envía mensajes automáticamente. Los precios nuevos se ingresan en COP. El material gráfico no define precios ni duraciones reservables.
+La sede es Medellín, Colombia. El número público inicial es +57 3217168203 y se puede editar en Página web. La web mantiene el enlace de contacto y permite confirmar reservas por WhatsApp cuando se activa WAHA. Los precios nuevos se ingresan en COP. El material gráfico no define precios ni duraciones reservables.
 
 ## Avisos de nuevas citas
 
-Administración → Avisos permite cambiar los destinos, conectar los proveedores, activar cada canal y enviar pruebas. Correo: SMTP SSL puerto 465 de Hostinger o Gmail con contraseña de aplicación. WhatsApp: Cloud API v23.0, token de sistema con permisos de mensajería, ID del número emisor y plantilla aprobada con tres parámetros de cuerpo (servicio, fecha, enlace). Los destinos son independientes del contacto público. No se envían mensajes automáticos a clientes.
+Administración → Avisos permite cambiar los destinos, conectar los proveedores, activar cada canal y enviar pruebas. Correo: SMTP SSL puerto 465 de Hostinger o Gmail con contraseña de aplicación. WhatsApp: Cloud API v23.0, token de sistema con permisos de mensajería, ID del número emisor y plantilla aprobada con tres parámetros de cuerpo (servicio, fecha, enlace). Los destinos son independientes del contacto público. La conexión oficial de esta sección avisa al negocio; las confirmaciones al cliente y las reservas conversacionales usan la conexión WAHA descrita abajo.
 
 Push se activa en cada dispositivo. En iOS/iPadOS 16.4 o posterior se instala desde Safari en la pantalla de inicio antes de solicitar permiso. Las claves VAPID se generan una sola vez y se guardan en PostgreSQL. Las credenciales SMTP, el token de Meta y la clave privada VAPID se cifran con AES-256-GCM usando una clave derivada de SESSION_SECRET: conservar este secreto junto con el respaldo; cambiarlo requiere migrar/reconfigurar las credenciales y suscripciones.
 
@@ -85,3 +85,13 @@ Horarios → Abrir un período permite elegir inicio/fin inclusivos (hasta un a�
 ## Iconos
 
 Arte vectorial en `public/icon.svg` y `public/favicon.svg`: corona dorada, fondo negro/burdeos y monograma LP. `node scripts/generate-icons.mjs` genera PNG 192/512, variantes maskable con contenido dentro de la zona segura central, Apple Touch 180, favicon PNG 16/32, ICO con tamaños 16/32/48/256 y badge de notificaciones. Las rutas se declaran en layout, manifest y service worker. El logo completo del negocio se conserva en la página.
+
+## WhatsApp con QR (WAHA)
+
+Servicio privado Docker con imagen fijada a devlikeapro/waha:latest-2026.9.2@sha256:280bdc8f860267a2488a45d00ec88529646f7468c0bf0283c595d6efdd1b5e3b, volumen whatsapp_sessions y sin puertos publicados. Generar WAHA_API_KEY aleatoria en .env antes de levantar compose; nunca publicarla. El administrador conecta en Avisos → Reservas por WhatsApp, obtiene un QR y vincula +573217168203. Tras vincular, activa la automatización. Se verifica el número vinculado antes de activar o enviar. WAHA es una integración no oficial y puede perder conexión o sufrir restricciones; no promete entrega garantizada.
+
+RESERVAR inicia un menú de servicios, fechas abiertas, horas, nombre y confirmación explícita. MENÚ reinicia; ASESOR pausa para atención humana en WhatsApp; SALIR abandona el proceso, sin cancelar citas existentes. Sesiones de conversación expiran tras 30 minutos. Las horas se revalidan al confirmar y se usa la misma exclusión de PostgreSQL que la web. Los mensajes repetidos se deduplican por ID; estado, reserva y respuesta se guardan en una transacción. Mensajes de grupos, propios, multimedia y antiguos se ignoran. LID se resuelve mediante WAHA; si no existe teléfono conocido, el bot deriva a la web/atención personal.
+
+Webhooks autenticados con secreto derivado de SESSION_SECRET, enviados solo por la red Docker. La cola recibe hasta 20 mensajes por chat/minuto y 500 pendientes. El worker procesa respuestas con orden por destinatario. Las respuestas de conversación caducan a los 15 minutos; confirmaciones de cita mantienen los reintentos normales. Los cuerpos entrantes se eliminan al procesar, IDs a los siete días y estados a los dos días. La web solo encola confirmación si el cliente marca su consentimiento y la automatización está activa. Pausar omite mensajes pendientes. No hay envíos de marketing.
+
+Las pruebas del bot y proveedores simulados no demuestran entrega real: tras vincular, comprobar con un cliente de prueba el recorrido RESERVAR y la confirmación web. Respaldar PostgreSQL, .env y el volumen de sesiones con acceso restringido; el script de backup existente cubre solo PostgreSQL.

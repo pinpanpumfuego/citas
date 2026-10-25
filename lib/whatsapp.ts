@@ -38,6 +38,9 @@ export function inboundMessage(event:any){
 export async function receive(event:any){
  const m=inboundMessage(event);if(!m)return;
  const [c]=await query('SELECT * FROM whatsapp_config WHERE id=1');if(!c.enabled||event.me?.id?.split('@')[0]!==c.phone||m.timestamp*1000<new Date(c.enabled_at).getTime())return;
+ const command=m.body.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+ const [chat]=await query("SELECT state FROM whatsapp_chats WHERE chat=$1 AND updated_at>now()-interval '30 minutes'",[m.chat]);
+ if(!['reservar','reserva','menu','cita','asesor'].includes(command)&&!chat?.state?.step)return;
  const [rate]=await query("SELECT count(*)::int AS n FROM whatsapp_inbox WHERE chat=$1 AND created_at>now()-interval '1 minute'",[m.chat]);if(rate.n>=20)return;
  const [total]=await query("SELECT count(*)::int AS n FROM whatsapp_inbox WHERE processed=false");if(total.n>=500)throw new Error('Bandeja ocupada');
  let phone=m.chat.endsWith('@c.us')?m.chat.split('@')[0]:'';

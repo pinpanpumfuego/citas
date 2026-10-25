@@ -49,7 +49,7 @@ services:
         condition: service_healthy
     mem_limit: 128m
   waha:
-    image: devlikeapro/waha:2026.9.2
+    image: devlikeapro/waha:latest-2026.9.2@sha256:280bdc8f860267a2488a45d00ec88529646f7468c0bf0283c595d6efdd1b5e3b
     restart: unless-stopped
     environment:
       WAHA_API_KEY: ${WAHA_API_KEY:?Set WAHA_API_KEY}
