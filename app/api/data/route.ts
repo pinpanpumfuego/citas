@@ -43,7 +43,7 @@ export async function GET(req:NextRequest){
       const blocks=await query("SELECT * FROM bookings WHERE kind='block' AND status='confirmed' AND end_at>now() ORDER BY start_at");
       return NextResponse.json({settings,services,bookings,blocks,local:localMode()});
     }
-    const [settings]=await query('SELECT name,description,address,phone,open_time,close_time,weekdays FROM settings WHERE id=1');
+    const [settings]=await query('SELECT name,description,address,phone,open_time,close_time,weekdays,time_format FROM settings WHERE id=1');
     const [wa]=await query('SELECT enabled FROM whatsapp_config WHERE id=1');
     return NextResponse.json({settings,whatsappEnabled:wa.enabled,services:await query('SELECT * FROM services WHERE active=true ORDER BY id')});
   }catch(e){console.error('Data query failed',e instanceof Error?e.message:'error');return NextResponse.json({error:'No pudimos cargar los datos. Intenta nuevamente.'},{status:500});}
@@ -80,7 +80,10 @@ export async function POST(req:NextRequest){
     }
     if(action==='preview_period'||action==='open_period')return NextResponse.json(await openPeriod(b,action==='preview_period'));
     if(action==='preview_change'||action==='availability_change')return NextResponse.json(await changeAvailability(b,action==='preview_change'));
-    if(action==='service'){
+    if(action==='time_format'){
+      if(!['24h','12h'].includes(b.format))throw new Error('Elige 24 horas o AM/PM.');
+      await query('UPDATE settings SET time_format=$1 WHERE id=1',[b.format]);
+    } else if(action==='service'){
       const name=clean(b.name,100),description=clean(b.description,500);
       if(!name||!int(b.price,0,1000000000)||!int(b.duration,5,480)||!int(b.buffer,0,120)||typeof b.active!=='boolean')throw new Error('Revisa los datos del servicio.');
       if(b.id){if(!int(b.id,1,2147483647))throw new Error('Servicio inválido.');await query('UPDATE services SET name=$1,description=$2,price=$3,duration=$4,buffer=$5,active=$6 WHERE id=$7',[name,description,b.price,b.duration,b.buffer,b.active,b.id]);}

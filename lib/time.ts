@@ -19,4 +19,10 @@ export function candidates(date:string, open:string, close:string, duration:numb
   return result;
 }
 export const money=(cents:number)=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP'}).format(cents/100);
-export const displayTime=(date:string|Date)=>new Intl.DateTimeFormat('es',{timeZone:ZONE,hour:'numeric',minute:'2-digit'}).format(new Date(date));
+export type TimeFormat='24h'|'12h';
+export function formatClock(time:string,format:TimeFormat='24h'){
+ const [h,m]=time.split(':').map(Number);
+ if(format==='12h')return (h%12||12)+':'+String(m).padStart(2,'0')+' '+(h%24>=12?'PM':'AM');
+ return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+}
+export const displayTime=(date:string|Date,format:TimeFormat='24h')=>formatClock(localParts(date).time,format);

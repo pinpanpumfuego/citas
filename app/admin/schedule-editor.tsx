@@ -1,4 +1,5 @@
 'use client';
+import {TimeInput,useTimeFormat} from '../time-format';
 import {useEffect,useRef,useState} from 'react';
 import {ChevronLeft,ChevronRight,Check,Plus} from 'lucide-react';
 import PeriodEditor from './period-editor';
@@ -7,6 +8,7 @@ import {today} from '@/lib/time';
 import {dateLabel} from './availability-dialog';
 type Props={settings:any;services:any[];save:(p:any)=>Promise<boolean>;busy:boolean;onAgenda:(date:string)=>void};
 export default function ScheduleEditor(props:Props){
+ const {displayTime,clock,format}=useTimeFormat();
  const [month,setMonth]=useState(today().slice(0,7)),[date,setDate]=useState(today()),[mode,setMode]=useState<'day'|'many'|'period'>('day'),[picked,setPicked]=useState<string[]>([]),[counts,setCounts]=useState<Record<string,{appointments:number;blocks:number}>>({}),[fetching,setFetching]=useState(false),[loadError,setLoadError]=useState(''),[notice,setNotice]=useState(''),[error,setError]=useState(''),[ranges,setRanges]=useState<Range[]>([]),[open,setOpen]=useState(false),[revision,setRevision]=useState(0);
  const form=useRef<HTMLFormElement>(null),editor=useRef<HTMLDivElement>(null),drag=useRef<{active:boolean;add:boolean;visited:Set<string>}>({active:false,add:true,visited:new Set()});
  const schedule=scheduleFor(props.settings);
@@ -29,7 +31,7 @@ export default function ScheduleEditor(props:Props){
  {mode==='many'&&<div className="calendar-selection"><strong>{picked.length} días marcados</strong><button className="back-link" onClick={()=>setPicked([])}>Limpiar selección</button></div>}<small>Las fechas nuevas permanecen cerradas hasta que guardes un horario. Abierto no significa libre: se respetan citas y bloqueos.</small></section>
  <div ref={editor} className="panel calendar-day-editor"><h2>{mode==='day'?dateLabel(date):'Horario de los días marcados'}</h2>{mode==='day'&&<button className="back-link" onClick={()=>props.onAgenda(date)}>Ver citas y bloqueos de este día →</button>}
  <form key={mode+'-'+date+'-'+JSON.stringify(props.settings.schedule)} ref={form} onSubmit={e=>{e.preventDefault();submit();}}><div className="schedule-modes"><button type="button" aria-pressed={open} onClick={()=>setOpen(true)}>Trabajo</button><button type="button" aria-pressed={!open} onClick={()=>setOpen(false)}>Cerrado</button></div>
- {open&&<>{ranges.map((r,i)=><div className="calendar-range" key={i+'-'+r.start+'-'+r.end}><div className="simple-hours-pair"><label>Desde<input name={'s'+i} type="time" required defaultValue={r.start}/></label><label>Hasta<input name={'e'+i} type="time" required defaultValue={r.end}/></label></div>{i>0&&<button className="back-link" type="button" onClick={()=>setRanges(readRanges().filter((_,j)=>j!==i))}>Quitar franja</button>}</div>)}<button type="button" className="back-link" disabled={ranges.length>=8} onClick={()=>setRanges([...readRanges(),{start:'14:00',end:'18:00'}])}><Plus size={16}/> Añadir horas después de un descanso</button></>}
+ {open&&<>{ranges.map((r,i)=><div className="calendar-range" key={i+'-'+r.start+'-'+r.end}><div className="simple-hours-pair"><label>Desde<TimeInput name={'s'+i} required defaultValue={r.start}/></label><label>Hasta<TimeInput name={'e'+i} required defaultValue={r.end}/></label></div>{i>0&&<button className="back-link" type="button" onClick={()=>setRanges(readRanges().filter((_,j)=>j!==i))}>Quitar franja</button>}</div>)}<button type="button" className="back-link" disabled={ranges.length>=8} onClick={()=>setRanges([...readRanges(),{start:'14:00',end:'18:00'}])}><Plus size={16}/> Añadir horas después de un descanso</button></>}
  <p className="simple-hours-note">{appointments>0?`Hay ${appointments} cita(s) en estas fechas. `:''}Guardar cambia únicamente el horario de {mode==='day'?'este día':'los días marcados'}. Las citas y los bloqueos se conservan.</p>
  <button className="button full" disabled={props.busy||(mode==='many'&&!picked.length)}>{props.busy?'Guardando…':open?(mode==='day'?'Guardar horario del día':`Aplicar horario a ${picked.length} días`):(mode==='day'?'Cerrar este día':`Cerrar ${picked.length} días`)}</button>{error&&<p className="error" role="alert">{error}</p>}{notice&&<p className="notice" role="status"><Check size={16}/>{notice}</p>}</form></div></div>;
 }

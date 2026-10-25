@@ -44,3 +44,5 @@ button:focus-visible,a:focus-visible{outline-color:var(--gold)}
 .reservation-date{font-size:17px;font-weight:700;color:#ffe1a0}.reservation-time{display:inline-block;background:#f1c55f;color:#281805;padding:6px 12px;border-radius:8px;font-size:21px;font-weight:800}.reservations-panel .notice .secondary{margin-top:12px}.agenda-mode button{min-height:54px;font-size:16px;font-weight:700}
 
 .reservation-tools{margin:14px 0}.reservation-tools summary{padding:12px;border:1px solid var(--line);border-radius:8px;color:var(--gold);cursor:pointer}.reservation-tools[open] summary{margin-bottom:12px}
+
+.time-input{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:4px;width:100%;margin-top:8px}.time-input.time-input-12{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) minmax(0,1.15fr)}.time-input select,.reservation-editor .time-input select{width:100%;min-width:0;min-height:48px;margin:0;padding:8px 2px;font-size:16px;border:1px solid var(--line);border-radius:6px}.time-input input[type=hidden]{display:none}.account-panel+.account-panel{margin-top:18px}

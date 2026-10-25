@@ -5,8 +5,10 @@ const dateLabel=(d:string)=>new Intl.DateTimeFormat('es-CO',{weekday:'long',day:
 const numbered=(items:string[])=>items.map((x,i)=>`${i+1}. ${x}`).join('\n');
 const help='\nResponde con el número de la opción. Escribe MENÚ para empezar de nuevo o ASESOR para atención personal.';
 const choice=(body:string,items:any[])=>/^\d{1,3}$/.test(body)?items[Number(body)-1]:undefined;
-export async function confirmation(q:Query,id:string){const [b]=await q('SELECT * FROM bookings WHERE id=$1',[id]);const [s]=await q('SELECT name,address FROM settings WHERE id=1');return `Hola, ${b.customer}. Tu cita en ${s.name} está confirmada.\n${b.service_name}\n${dateLabel(localParts(b.start_at).date)} · ${displayTime(b.start_at)} (Medellín)\n${s.address}\nReferencia: ${id}\nPara solicitar un cambio, responde ASESOR.`;}
+export async function confirmation(q:Query,id:string){const [b]=await q('SELECT * FROM bookings WHERE id=$1',[id]);const [s]=await q('SELECT name,address,time_format FROM settings WHERE id=1');return `Hola, ${b.customer}. Tu cita en ${s.name} está confirmada.\n${b.service_name}\n${dateLabel(localParts(b.start_at).date)} · ${displayTime(b.start_at,s.time_format)} (Medellín)\n${s.address}\nReferencia: ${id}\nPara solicitar un cambio, responde ASESOR.`;}
 export async function botStep(q:Query,state:any,body:string,phone:string):Promise<{state:any;text?:string;bookingId?:string}>{
+ const [preferences]=await q('SELECT time_format FROM settings WHERE id=1');
+ const showTime=(value:string|Date)=>displayTime(value,preferences?.time_format||'24h');
  const word=body.toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
  if(word==='asesor')return {state:{step:'paused'},text:'El asistente automático queda pausado. Escribe aquí tu consulta para que el negocio pueda atenderte. Para volver a reservar escribe RESERVAR.'};
  if(word==='salir'||word==='cancelar')return {state:{},text:'Proceso de reserva cerrado. Esto no cancela una cita ya confirmada. Para cambiar una cita escribe ASESOR.'};
@@ -20,15 +22,15 @@ export async function botStep(q:Query,state:any,body:string,phone:string):Promis
  const page=dates.slice(offset,offset+7);if(!page.length)return {state:{step:'service',services:await q('SELECT id,name,price FROM services WHERE active=true ORDER BY id')},text:'No quedan días disponibles para este servicio. Escribe MENÚ para elegir otro servicio o ASESOR para consultar.'};
  return {state:{step:'date',service,dates:page,offset},text:service.name+'\nElige el día:\n'+numbered(page.map(dateLabel))+(dates.length>offset+7?'\nEscribe MÁS para ver otros días.':'')+help};
  }
- async function times(service:any,date:string){const slots=await available(service.id,date,q);if(!slots.length)return dates(service);return {state:{step:'slot',service,date,slots},text:dateLabel(date)+'\nElige la hora (Medellín):\n'+numbered(slots.map(displayTime))+help};}
+ async function times(service:any,date:string){const slots=await available(service.id,date,q);if(!slots.length)return dates(service);return {state:{step:'slot',service,date,slots},text:dateLabel(date)+'\nElige la hora (Medellín):\n'+numbered(slots.map(showTime))+help};}
  if(restart)return services();
  if(state.step==='service'){const s=choice(body,state.services);return s?dates(s):{state,text:'Elige un servicio:\n'+numbered(state.services.map((s:any)=>s.name))+help};}
  if(state.step==='date'){if(word==='mas')return dates(state.service,(state.offset||0)+7);const d=choice(body,state.dates);return d?times(state.service,d):{state,text:'Elige un día:\n'+numbered(state.dates.map(dateLabel))+help};}
- if(state.step==='slot'){const start=choice(body,state.slots);if(!start)return {state,text:'Elige una hora:\n'+numbered(state.slots.map(displayTime))+help};if(!(await available(state.service.id,state.date,q)).includes(start))return times(state.service,state.date);return {state:{...state,step:'name',start},text:'¿Cuál es tu nombre completo? Escribe al menos nombre y apellido.'};}
+ if(state.step==='slot'){const start=choice(body,state.slots);if(!start)return {state,text:'Elige una hora:\n'+numbered(state.slots.map(showTime))+help};if(!(await available(state.service.id,state.date,q)).includes(start))return times(state.service,state.date);return {state:{...state,step:'name',start},text:'¿Cuál es tu nombre completo? Escribe al menos nombre y apellido.'};}
  if(state.step==='name'){
  if(body.length<3||body.length>100||!/[a-záéíóúñ]/i.test(body))return {state,text:'Escribe tu nombre completo (máximo 100 caracteres).'};
  if(!phone)return {state:{step:'paused'},text:'No hemos podido identificar tu teléfono. Puedes reservar en https://www.laprincesadelascejas.com o escribir aquí para atención personal.'};
- return {state:{...state,step:'confirm',name:body},text:`Revisa tu cita:\n${state.service.name} · ${money(state.service.price)}\n${dateLabel(state.date)} · ${displayTime(state.start)} (Medellín)\nNombre: ${body}\n\nEscribe CONFIRMAR para guardar la cita y recibir la confirmación por WhatsApp. Usaremos tu nombre y teléfono para gestionar esta reserva. SALIR abandona este proceso.`};}
+ return {state:{...state,step:'confirm',name:body},text:`Revisa tu cita:\n${state.service.name} · ${money(state.service.price)}\n${dateLabel(state.date)} · ${showTime(state.start)} (Medellín)\nNombre: ${body}\n\nEscribe CONFIRMAR para guardar la cita y recibir la confirmación por WhatsApp. Usaremos tu nombre y teléfono para gestionar esta reserva. SALIR abandona este proceso.`};}
  if(state.step==='confirm'){
  if(word!=='confirmar')return {state,text:'Escribe CONFIRMAR para guardar tu cita, MENÚ para cambiarla o SALIR para abandonar.'};
  const [current]=await q('SELECT * FROM services WHERE id=$1 AND active=true',[state.service.id]);

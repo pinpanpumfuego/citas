@@ -2,11 +2,12 @@
 import { useEffect,useState } from 'react';
 import Image from 'next/image';
 import { ArrowUpRight,ArrowRight,Clock,MapPin,Check,ChevronLeft,Sparkles } from 'lucide-react';
-import { today,displayTime,money } from '@/lib/time';
+import { today,displayTime as formatTime,money } from '@/lib/time';
 export default function PublicSite(){
   const [data,setData]=useState<any>(null),[error,setError]=useState(''),[lang,setLang]=useState<'es'|'en'>('es');
   const [service,setService]=useState<any>(null),[date,setDate]=useState(today()),[slots,setSlots]=useState<string[]>([]),[slot,setSlot]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[done,setDone]=useState(''),[whatsappQueued,setWhatsappQueued]=useState(false);
   const en=lang==='en';
+  const displayTime=(date:string)=>formatTime(date,data?.settings.time_format||'24h');
   const contact=(data?.settings.phone || '').replace(/\D/g,'');
   const whatsapp=/^[1-9]\d{7,14}$/.test(contact)?`https://wa.me/${contact}`:null;
   useEffect(()=>{fetch('/api/data').then(r=>r.json()).then(d=>d.error?setError(d.error):setData(d)).catch(()=>setError('No pudimos conectar. Recarga la página.'));},[]);
