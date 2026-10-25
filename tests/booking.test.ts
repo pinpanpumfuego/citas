@@ -143,3 +143,18 @@ test('dates are closed by default, bounded opening is inclusive and never cancel
  await openPeriod({...input,replace:true});assert.ok((await available(1,until)).length);
  assert.deepEqual(await available(1,afterDate),[]);
 });
+
+test('different weekday hours repeat only within the period and closed days replace openings explicitly',async()=>{
+ const {openingPlan,openPeriod}=await import('../lib/open-period');
+ const weekly=Array.from({length:7},()=>[] as {start:string;end:string}[]);
+ weekly[1]=[{start:'09:00',end:'12:00'},{start:'14:00',end:'18:00'}];weekly[2]=[{start:'11:00',end:'16:00'}];
+ const input={from:'2030-01-07',until:'2030-01-20',weekly};
+ const plan=openingPlan(input);assert.equal(plan.dates.length,14);assert.deepEqual(plan.patch['2030-01-07'],weekly[1]);assert.deepEqual(plan.patch['2030-01-14'],weekly[1]);assert.deepEqual(plan.patch['2030-01-08'],weekly[2]);assert.deepEqual(plan.patch['2030-01-13'],[]);assert.equal(plan.patch['2030-01-21'],undefined);
+ assert.throws(()=>openingPlan({...input,weekly:[]}));assert.throws(()=>openingPlan({...input,weekly:weekly.map(()=>[{start:'18:00',end:'09:00'}])}));
+ await query('UPDATE settings SET schedule=$1 WHERE id=1',[{dates:{'2030-01-13':[{start:'09:00',end:'18:00'}],'2030-01-21':[{start:'10:00',end:'12:00'}]}}]);
+ const before=await query('SELECT id,status FROM bookings ORDER BY id');
+ await openPeriod(input,true);assert.equal((await query('SELECT schedule FROM settings WHERE id=1'))[0].schedule.dates['2030-01-07'],undefined);
+ await openPeriod(input);assert.equal((await query('SELECT schedule FROM settings WHERE id=1'))[0].schedule.dates['2030-01-13'].length,1);
+ await openPeriod({...input,replace:true});const saved=(await query('SELECT schedule FROM settings WHERE id=1'))[0].schedule;
+ assert.deepEqual(saved.dates['2030-01-13'],[]);assert.deepEqual(saved.dates['2030-01-08'],weekly[2]);assert.deepEqual(saved.dates['2030-01-21'],[{start:'10:00',end:'12:00'}]);assert.deepEqual(saved.weekly,Array.from({length:7},()=>[]));assert.deepEqual(await query('SELECT id,status FROM bookings ORDER BY id'),before);
+});
