@@ -27,7 +27,17 @@ Los datos se guardan en `.data/postgres` usando PGlite (PostgreSQL embebido). No
 - Precio y nombre del servicio se conservan en la reserva aunque el catálogo cambie.
 - Autenticación administrativa con cookie HttpOnly, firma HMAC y caducidad de 12 horas cuando se configura contraseña.
 
-## Despliegue
+## Producción en Hostinger
+
+Publicado el 25 de octubre de 2026 (UTC) en https://www.laprincesadelascejas.com. Administración: `/admin`.
+
+El VPS existente aloja `/opt/citas`: Docker Compose ejecuta Next.js en `127.0.0.1:3107` y PostgreSQL 17 en una red privada sin puerto público. Nginx sirve el dominio y redirige HTTP a HTTPS. Certbot renueva el certificado mediante el temporizador existente y un hook recarga Nginx.
+
+Las claves están únicamente en `/opt/citas/.env`, con permisos restringidos. No incluirlas en Git. `deploy/backup.sh` genera una copia diaria comprimida en `/var/backups/citas` y conserva treinta días; son copias dentro del mismo VPS, no externas. La tarea está en `/etc/cron.d/citas-backup`. Los valores DNS anteriores están en `deploy/dns-before.json`.
+
+Antes de aceptar reservas, entrar al panel y configurar servicios, precios, duración, dirección y horario real. El catálogo de producción inicia vacío. WhatsApp sigue pendiente de número y de integración con Meta.
+
+## Despliegue alternativo
 
 Copiar `.env.example` a `.env.local` y configurar DATABASE_URL, ADMIN_PASSWORD y SESSION_SECRET (secreto aleatorio de al menos 32 bytes). Usar un servidor Node persistente y PostgreSQL gestionado. Producción rechaza la base embebida y no habilita acceso sin contraseña. La conexión TLS de PostgreSQL se configura en DATABASE_URL según el proveedor. PGlite local y PostgreSQL de producción son bases separadas: los datos locales no se transfieren automáticamente.
 
@@ -42,7 +52,7 @@ El esquema se inicializa automáticamente en la primera consulta. Para evolució
 
 ## Pendiente, no simulado
 
-WhatsApp no envía ni recibe mensajes: falta número y configuración de Meta Business, webhook firmado, almacenamiento de eventos idempotentes y trabajador con reintentos/plantillas. No hay cobros, anticipos, subida de fotografías, reprogramación directa, historial de auditoría ni CRM independiente. Para cambiar una cita en esta versión se cancela y se vuelve a reservar. No se ha conectado ni modificado el dominio del negocio. El contenido editable tiene una versión textual; ES/EN traduce la interfaz, no el texto escrito por la administradora. Antes de lanzamiento, agregar política de privacidad y condiciones del negocio, migraciones, copias verificadas, monitoreo, accesibilidad del foco en diálogos y validación móvil/PWA.
+WhatsApp no envía ni recibe mensajes: falta número y configuración de Meta Business, webhook firmado, almacenamiento de eventos idempotentes y trabajador con reintentos/plantillas. No hay cobros, anticipos, subida de fotografías, reprogramación directa, historial de auditoría ni CRM independiente. Para cambiar una cita en esta versión se cancela y se vuelve a reservar. El contenido editable tiene una versión textual; ES/EN traduce la interfaz, no el texto escrito por la administradora. Quedan pendientes política de privacidad y condiciones del negocio, migraciones versionadas, copias externas, monitoreo, accesibilidad del foco en diálogos y validación de instalación en dispositivos reales.
 
 ## Organización
 
