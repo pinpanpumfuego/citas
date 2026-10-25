@@ -1,4 +1,5 @@
 export const paymentSchema=[
+ `CREATE TABLE IF NOT EXISTS payment_qr (id integer PRIMARY KEY CHECK(id=1), content bytea NOT NULL, mime text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`,
  `CREATE TABLE IF NOT EXISTS payment_config (id integer PRIMARY KEY CHECK(id=1), enabled boolean NOT NULL DEFAULT false, manual_enabled boolean NOT NULL DEFAULT false, instructions text NOT NULL DEFAULT '', online_enabled boolean NOT NULL DEFAULT false, public_key text NOT NULL DEFAULT '', secrets text NOT NULL DEFAULT '', hold_hours integer NOT NULL DEFAULT 24 CHECK(hold_hours BETWEEN 1 AND 72))`,
  `INSERT INTO payment_config(id) VALUES(1) ON CONFLICT DO NOTHING`,
  `ALTER TABLE services ADD COLUMN IF NOT EXISTS deposit_mode text NOT NULL DEFAULT 'none' CHECK(deposit_mode IN ('none','fixed','percent'))`,
