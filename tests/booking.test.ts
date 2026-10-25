@@ -158,3 +158,12 @@ test('different weekday hours repeat only within the period and closed days repl
  await openPeriod({...input,replace:true});const saved=(await query('SELECT schedule FROM settings WHERE id=1'))[0].schedule;
  assert.deepEqual(saved.dates['2030-01-13'],[]);assert.deepEqual(saved.dates['2030-01-08'],weekly[2]);assert.deepEqual(saved.dates['2030-01-21'],[{start:'10:00',end:'12:00'}]);assert.deepEqual(saved.weekly,Array.from({length:7},()=>[]));assert.deepEqual(await query('SELECT id,status FROM bookings ORDER BY id'),before);
 });
+
+test('touch calendar applies only explicitly selected dates and can close them without changing others',async()=>{
+ const {openingPlan,openPeriod}=await import('../lib/open-period');
+ const input={dates:['2030-03-04','2030-03-06','2030-03-04'],ranges:[{start:'10:00',end:'15:00'}],replace:true};
+ assert.deepEqual(openingPlan(input).dates,['2030-03-04','2030-03-06']);assert.throws(()=>openingPlan({...input,dates:[]}));assert.throws(()=>openingPlan({...input,dates:['2030-02-30']}));
+ await query('UPDATE settings SET schedule=$1 WHERE id=1',[{dates:{'2030-03-05':[{start:'09:00',end:'12:00'}]}}]);
+ await openPeriod(input);await openPeriod({...input,dates:['2030-03-04'],ranges:[]});const [s]=await query('SELECT schedule FROM settings WHERE id=1');
+ assert.deepEqual(s.schedule.dates['2030-03-04'],[]);assert.deepEqual(s.schedule.dates['2030-03-06'],input.ranges);assert.deepEqual(s.schedule.dates['2030-03-05'],[{start:'09:00',end:'12:00'}]);
+});

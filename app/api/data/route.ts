@@ -17,6 +17,15 @@ export async function GET(req:NextRequest){
   try {
     const mode=req.nextUrl.searchParams.get('mode');
     if(mode==='slots'){const date=req.nextUrl.searchParams.get('date')||'';return NextResponse.json({slots:await available(Number(req.nextUrl.searchParams.get('service')),date)});}
+    if(mode==='calendar'){
+      if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
+      const month=req.nextUrl.searchParams.get('month')||'';
+      if(!/^\d{4}-\d{2}$/.test(month)||!validDate(month+'-01'))return NextResponse.json({error:'Mes inválido'},{status:400});
+      const rows=await query("SELECT kind,start_at,end_at FROM bookings WHERE status<>'cancelled' AND start_at < (($1::date + interval '1 month')::timestamp AT TIME ZONE 'America/Bogota') AND end_at > ($1::date::timestamp AT TIME ZONE 'America/Bogota')",[month+'-01']);
+      const days:Record<string,{appointments:number;blocks:number}>={};
+      for(let i=1;i<=31;i++){const date=month+'-'+String(i).padStart(2,'0');if(!validDate(date))break;const start=Date.parse(date+'T00:00:00-05:00'),end=start+86400000;const matching=rows.filter(b=>Date.parse(b.start_at)<end&&Date.parse(b.end_at)>start);days[date]={appointments:matching.filter(b=>b.kind==='appointment').length,blocks:matching.filter(b=>b.kind==='block').length};}
+      return NextResponse.json({days});
+    }
     if(mode==='admin'){
       if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
       const [settings]=await query('SELECT * FROM settings WHERE id=1');

@@ -2,6 +2,13 @@ import {validDate} from './time';
 import {Range,validateRanges} from './schedule';
 import {query} from './db';
 export function openingPlan(input:any){
+ if(input.dates!==undefined){
+ if(!Array.isArray(input.dates)||!input.dates.length||input.dates.length>366||!input.dates.every((d:unknown)=>typeof d==='string'&&validDate(d)))throw new Error('Selecciona entre 1 y 366 fechas válidas.');
+ const dates=[...new Set<string>(input.dates)].sort(),ranges=validateRanges(input.ranges);
+ if(Date.parse(dates[dates.length-1])-Date.parse(dates[0])>365*86400000)throw new Error('Selecciona fechas dentro de un año.');
+ return {dates,ranges,patch:Object.fromEntries(dates.map(d=>[d,ranges]))};
+ }
+
  if(!validDate(input.from)||!validDate(input.until)||input.until<input.from||Date.parse(input.until)-Date.parse(input.from)>365*86400000)throw new Error('Elige un período de hasta un año, con la fecha final igual o posterior a la inicial.');
  const weekly=input.weekly===undefined?null:(Array.isArray(input.weekly)&&input.weekly.length===7?input.weekly.map(validateRanges):null);
  if(input.weekly!==undefined&&!weekly)throw new Error('Configura los siete días de la semana.');
