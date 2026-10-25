@@ -4,6 +4,7 @@ import { isAdmin,localMode,equal,token } from '@/lib/auth';
 import { available,reserve } from '@/lib/booking';
 import { validDate } from '@/lib/time';
 import { scheduleFor,validateRanges } from '@/lib/schedule';
+import { changeAvailability } from '@/lib/availability-change';
 import { randomUUID } from 'node:crypto';
 export const dynamic='force-dynamic';
 const attempts=new Map<string,{count:number;until:number}>();
@@ -20,8 +21,9 @@ export async function GET(req:NextRequest){
       const services=await query('SELECT * FROM services ORDER BY id');
       const date=req.nextUrl.searchParams.get('date')||new Date().toISOString().slice(0,10);
       if(!validDate(date))return NextResponse.json({error:'Fecha inválida'},{status:400});
-      const bookings=await query("SELECT * FROM bookings WHERE (start_at AT TIME ZONE 'America/Bogota')::date=$1::date ORDER BY start_at",[date]);
-      return NextResponse.json({settings,services,bookings,local:localMode()});
+      const bookings=await query("SELECT * FROM bookings WHERE start_at < (($1::date + 1)::timestamp AT TIME ZONE 'America/Bogota') AND end_at > ($1::date::timestamp AT TIME ZONE 'America/Bogota') ORDER BY start_at",[date]);
+      const blocks=await query("SELECT * FROM bookings WHERE kind='block' AND status='confirmed' AND end_at>now() ORDER BY start_at");
+      return NextResponse.json({settings,services,bookings,blocks,local:localMode()});
     }
     const [settings]=await query('SELECT name,description,address,phone,open_time,close_time,weekdays FROM settings WHERE id=1');
     return NextResponse.json({settings,services:await query('SELECT * FROM services WHERE active=true ORDER BY id')});
@@ -48,6 +50,7 @@ export async function POST(req:NextRequest){
       const id=await reserve({serviceId:b.serviceId,date:b.date,start:b.start,customer,phone});return NextResponse.json({ok:true,id});
     }
     if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
+    if(action==='preview_change'||action==='availability_change')return NextResponse.json(await changeAvailability(b,action==='preview_change'));
     if(action==='service'){
       const name=clean(b.name,100),description=clean(b.description,500);
       if(!name||!int(b.price,0,1000000000)||!int(b.duration,5,480)||!int(b.buffer,0,120)||typeof b.active!=='boolean')throw new Error('Revisa los datos del servicio.');

@@ -59,3 +59,45 @@ test('split schedules and date overrides respect service buffers and existing bo
  await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify(schedule)]);
  assert.deepEqual(await available(s.id,date),[]);
 });
+
+test('quick changes preview conflicts, close whole date ranges, edit and release blocks',async()=>{
+ const {changeAvailability,changeBounds}=await import('../lib/availability-change');
+ const date=new Date(Date.now()+12*86400000).toISOString().slice(0,10);
+ const until=new Date(Date.parse(date)+2*86400000).toISOString().slice(0,10);
+ const weekly=Array.from({length:7},()=>[{start:'09:00',end:'18:00'}]);
+ await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify({weekly,dates:{}})]);
+ const [s]=await query("INSERT INTO services(name,price,duration,buffer) VALUES('Cambios',20000,90,30) RETURNING id");
+ const slots=await available(s.id,date);
+ const id=await reserve({serviceId:s.id,date,start:slots[0],customer:'Cita existente',phone:'+573217168203'});
+ const vacation={mode:'vacation',date,until};
+ const preview=await changeAvailability(vacation,true);assert.equal(preview.conflicts?.length,1);
+ await assert.rejects(()=>changeAvailability(vacation));
+ assert.equal((await query('SELECT status FROM bookings WHERE id=$1',[id]))[0].status,'confirmed');
+ await query("UPDATE bookings SET status='cancelled' WHERE id=$1",[id]);
+ await changeAvailability(vacation);
+ const [block]=await query("SELECT * FROM bookings WHERE kind='block' AND start_at=$1",[changeBounds(vacation).start]);
+ const middle=new Date(Date.parse(date)+86400000).toISOString().slice(0,10);
+ assert.deepEqual(await available(s.id,middle),[]);
+ assert.deepEqual(await available(s.id,until),[]);
+ const next=new Date(Date.parse(until)+86400000).toISOString().slice(0,10);assert.ok((await available(s.id,next)).length);
+ await changeAvailability({mode:'hours',id:block.id,date,from:'12:00',to:'14:00',reason:'Almuerzo'});
+ assert.ok((await available(s.id,date)).some(t=>localParts(t).time==='09:00'));
+ assert.ok(!(await available(s.id,date)).some(t=>localParts(t).time==='12:00'));
+ await query("UPDATE bookings SET status='cancelled' WHERE id=$1",[block.id]);
+ assert.ok((await available(s.id,date)).some(t=>localParts(t).time==='12:00'));
+ await assert.rejects(()=>changeAvailability({mode:'hours',id, date,from:'10:00',to:'11:00'}));
+ assert.throws(()=>changeBounds({mode:'vacation',date,until:'2020-01-01'}));
+});
+test('extra hours merge existing windows without reopening blocked time',async()=>{
+ const {changeAvailability}=await import('../lib/availability-change');
+ const date=new Date(Date.now()+18*86400000).toISOString().slice(0,10);
+ const weekly=Array.from({length:7},()=>[]);
+ await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify({weekly,dates:{}})]);
+ await changeAvailability({mode:'extra',date,from:'09:00',to:'11:00'});
+ await changeAvailability({mode:'extra',date,from:'10:00',to:'14:00'});
+ const [s]=await query('SELECT schedule FROM settings WHERE id=1');
+ assert.deepEqual(s.schedule.dates[date],[{start:'09:00',end:'14:00'}]);
+ await changeAvailability({mode:'hours',date,from:'12:00',to:'14:00'});
+ await changeAvailability({mode:'extra',date,from:'13:00',to:'18:00'});
+ assert.ok(!(await available(1,date)).some(t=>localParts(t).time==='13:00'));
+});
