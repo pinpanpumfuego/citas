@@ -210,3 +210,15 @@ test('appointment edits preserve identity and protect closed or occupied hours',
  await assert.rejects(editBooking(input),/confirmadas/);
  [saved]=await query('SELECT * FROM bookings WHERE id=$1',[id]);assert.equal(saved.status,'cancelled');
 });
+
+test('reservation list includes old history, searches and paginates all matching appointments',async()=>{
+ const {listReservations}=await import('../lib/reservations');
+ const {randomUUID}=await import('node:crypto');
+ for(let i=0;i<32;i++){const start=new Date(Date.UTC(2010,0,1+i,14));await query("INSERT INTO bookings(id,service_name,price,customer,phone,start_at,end_at,status) VALUES($1,'Historial',100,'Historial único','+573001112233',$2,$3,$4)",[randomUUID(),start.toISOString(),new Date(+start+3600000).toISOString(),i===0?'cancelled':'completed']);}
+ const first=await listReservations('all','Historial único',1),second=await listReservations('all','Historial único',2);
+ assert.equal(first.total,32);assert.equal(first.rows.length,30);assert.equal(second.rows.length,2);assert.equal(new Set([...first.rows,...second.rows].map(b=>b.id)).size,32);
+ assert.equal((await listReservations('cancelled','Historial único',1)).total,1);
+ assert.equal((await listReservations('completed','Historial único',1)).total,31);
+ assert.equal((await listReservations('next','Historial único',1)).total,0);
+ assert.equal((await listReservations('all','not a customer',1)).total,0);
+});

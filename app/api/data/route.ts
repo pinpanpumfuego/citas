@@ -8,6 +8,7 @@ import { validateRanges } from '@/lib/schedule';
 import { changeAvailability } from '@/lib/availability-change';
 import {openPeriod} from '@/lib/open-period';
 import {editBooking} from '@/lib/edit-booking';
+import {listReservations} from '@/lib/reservations';
 import { randomUUID } from 'node:crypto';
 import {normalizedPhone} from '@/lib/whatsapp';
 export const dynamic='force-dynamic';
@@ -18,6 +19,10 @@ function int(v:unknown,min:number,max:number){return Number.isInteger(v)&&Number
 export async function GET(req:NextRequest){
   try {
     const mode=req.nextUrl.searchParams.get('mode');
+    if(mode==='reservations'){
+      if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
+      return NextResponse.json(await listReservations(req.nextUrl.searchParams.get('filter')||'all',req.nextUrl.searchParams.get('search')||'',Number(req.nextUrl.searchParams.get('page')||1)));
+    }
     if(mode==='slots'){const date=req.nextUrl.searchParams.get('date')||'';return NextResponse.json({slots:await available(Number(req.nextUrl.searchParams.get('service')),date)});}
     if(mode==='calendar'){
       if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
@@ -36,8 +41,7 @@ export async function GET(req:NextRequest){
       if(!validDate(date))return NextResponse.json({error:'Fecha inválida'},{status:400});
       const bookings=await query("SELECT * FROM bookings WHERE start_at < (($1::date + 1)::timestamp AT TIME ZONE 'America/Bogota') AND end_at > ($1::date::timestamp AT TIME ZONE 'America/Bogota') ORDER BY start_at",[date]);
       const blocks=await query("SELECT * FROM bookings WHERE kind='block' AND status='confirmed' AND end_at>now() ORDER BY start_at");
-      const reservations=await query("SELECT * FROM bookings WHERE kind='appointment' AND start_at>=now()-interval '30 days' ORDER BY start_at LIMIT 200");
-      return NextResponse.json({settings,services,bookings,blocks,reservations,local:localMode()});
+      return NextResponse.json({settings,services,bookings,blocks,local:localMode()});
     }
     const [settings]=await query('SELECT name,description,address,phone,open_time,close_time,weekdays FROM settings WHERE id=1');
     const [wa]=await query('SELECT enabled FROM whatsapp_config WHERE id=1');
