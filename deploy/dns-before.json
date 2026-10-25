@@ -1,0 +1,9 @@
+{
+  "domain": "laprincesadelascejas.com",
+  "observed_at": "2026-10-25",
+  "records": [
+    {"type":"CNAME","name":"www","content":"www.laprincesadelascejas.com.cdn.hstgr.net","ttl":300},
+    {"type":"A","name":"ftp","content":"88.223.85.177","ttl":1800},
+    {"type":"ALIAS","name":"@","content":"laprincesadelascejas.com.cdn.hstgr.net","ttl":300}
+  ]
+}
