@@ -7,6 +7,7 @@ import { validateRanges } from '@/lib/schedule';
 import { changeAvailability } from '@/lib/availability-change';
 import {openPeriod} from '@/lib/open-period';
 import { randomUUID } from 'node:crypto';
+import {normalizedPhone} from '@/lib/whatsapp';
 export const dynamic='force-dynamic';
 const attempts=new Map<string,{count:number;until:number}>();
 function limit(key:string,max:number){const now=Date.now();for(const [k,v] of attempts)if(v.until<now)attempts.delete(k);const v=attempts.get(key)||{count:0,until:now+60000};v.count++;attempts.set(key,v);return v.count<=max;}
@@ -27,7 +28,8 @@ export async function GET(req:NextRequest){
       return NextResponse.json({settings,services,bookings,blocks,local:localMode()});
     }
     const [settings]=await query('SELECT name,description,address,phone,open_time,close_time,weekdays FROM settings WHERE id=1');
-    return NextResponse.json({settings,services:await query('SELECT * FROM services WHERE active=true ORDER BY id')});
+    const [wa]=await query('SELECT enabled FROM whatsapp_config WHERE id=1');
+    return NextResponse.json({settings,whatsappEnabled:wa.enabled,services:await query('SELECT * FROM services WHERE active=true ORDER BY id')});
   }catch(e){console.error('Data query failed',e instanceof Error?e.message:'error');return NextResponse.json({error:'No pudimos cargar los datos. Intenta nuevamente.'},{status:500});}
 }
 export async function POST(req:NextRequest){
@@ -48,7 +50,8 @@ export async function POST(req:NextRequest){
       if(!limit('reservations',30))return NextResponse.json({error:'Demasiadas solicitudes. Intenta en un minuto.'},{status:429});
       const customer=clean(b.customer,100),phone=clean(b.phone,25);
       if(b.website || customer.length<2 || !/^\+?[\d ()-]{7,25}$/.test(phone)||!int(b.serviceId,1,2147483647)||!validDate(b.date)||typeof b.start!=='string')throw new Error('Revisa el nombre, teléfono y horario.');
-      const id=await reserve({serviceId:b.serviceId,date:b.date,start:b.start,customer,phone});return NextResponse.json({ok:true,id});
+      const consent=b.whatsappConsent==='on';const recipient=consent?normalizedPhone(phone):phone;if(consent&&!recipient)throw new Error('Escribe el teléfono con prefijo de país, por ejemplo +57 3001234567.');
+      const id=await reserve({serviceId:b.serviceId,date:b.date,start:b.start,customer,phone:consent?'+'+recipient:phone,whatsappConsent:consent});const jobs=await query("SELECT id FROM notification_jobs WHERE booking_id=$1 AND channel='waha_customer'",[id]);return NextResponse.json({ok:true,id,whatsappQueued:jobs.length>0});
     }
     if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
     if(action==='preview_period'||action==='open_period')return NextResponse.json(await openPeriod(b,action==='preview_period'));

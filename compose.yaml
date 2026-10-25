@@ -22,6 +22,8 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://citas:${DB_PASSWORD:?Set DB_PASSWORD}@db:5432/citas
+      WAHA_URL: http://waha:3000
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET}
     ports:
@@ -46,5 +48,20 @@ services:
       app:
         condition: service_healthy
     mem_limit: 128m
+  waha:
+    image: devlikeapro/waha:2026.9.2
+    restart: unless-stopped
+    environment:
+      WAHA_API_KEY: ${WAHA_API_KEY:?Set WAHA_API_KEY}
+      WAHA_DASHBOARD_ENABLED: 'false'
+      WHATSAPP_SWAGGER_ENABLED: 'false'
+      WAHA_PRINT_QR: 'false'
+      WHATSAPP_DEFAULT_ENGINE: WEBJS
+      WHATSAPP_RESTART_ALL_SESSIONS: 'true'
+    volumes:
+      - whatsapp_sessions:/app/.sessions
+    mem_limit: 2g
+    shm_size: 512m
 volumes:
+  whatsapp_sessions:
   postgres_data:

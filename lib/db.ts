@@ -30,10 +30,25 @@ export async function ready() {
       `INSERT INTO notification_config(id) VALUES(1) ON CONFLICT DO NOTHING`,
       `CREATE TABLE IF NOT EXISTS push_devices (id uuid PRIMARY KEY, endpoint text UNIQUE NOT NULL, subscription jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`,
       `CREATE TABLE IF NOT EXISTS notification_jobs (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, booking_id uuid REFERENCES bookings(id), channel text NOT NULL, target text NOT NULL, status text NOT NULL DEFAULT 'pending', attempts integer NOT NULL DEFAULT 0, next_at timestamptz NOT NULL DEFAULT now(), error text, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(booking_id,channel,target))`,
-      `CREATE OR REPLACE FUNCTION enqueue_booking_notifications() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='appointment' AND NEW.status='confirmed' THEN INSERT INTO notification_jobs(booking_id,channel,target) SELECT NEW.id,'email',config->>'emailTo' FROM notification_config WHERE config->>'emailEnabled'='true' UNION ALL SELECT NEW.id,'whatsapp',config->>'whatsappTo' FROM notification_config WHERE config->>'whatsappEnabled'='true' UNION ALL SELECT NEW.id,'push',id::text FROM push_devices; END IF; RETURN NEW; END $$`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS whatsapp_consent boolean NOT NULL DEFAULT false`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'web'`,
+      `ALTER TABLE notification_jobs ADD COLUMN IF NOT EXISTS payload jsonb NOT NULL DEFAULT '{}'`,
+      `CREATE TABLE IF NOT EXISTS whatsapp_config (id integer PRIMARY KEY CHECK(id=1), enabled boolean NOT NULL DEFAULT false, phone text NOT NULL DEFAULT '573217168203', enabled_at timestamptz)`,
+      `INSERT INTO whatsapp_config(id) VALUES(1) ON CONFLICT DO NOTHING`,
+      `CREATE TABLE IF NOT EXISTS whatsapp_chats (chat text PRIMARY KEY, state jsonb NOT NULL DEFAULT '{}', updated_at timestamptz NOT NULL DEFAULT now())`,
+      `CREATE TABLE IF NOT EXISTS whatsapp_inbox (id text PRIMARY KEY, chat text NOT NULL, phone text NOT NULL DEFAULT '', body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), processed boolean NOT NULL DEFAULT false)`,
+      `CREATE INDEX IF NOT EXISTS whatsapp_inbox_pending ON whatsapp_inbox(created_at) WHERE processed=false`,
+      `CREATE OR REPLACE FUNCTION enqueue_booking_notifications() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='appointment' AND NEW.status='confirmed' THEN INSERT INTO notification_jobs(booking_id,channel,target) SELECT NEW.id,'email',config->>'emailTo' FROM notification_config WHERE config->>'emailEnabled'='true' UNION ALL SELECT NEW.id,'whatsapp',config->>'whatsappTo' FROM notification_config WHERE config->>'whatsappEnabled'='true' UNION ALL SELECT NEW.id,'push',id::text FROM push_devices UNION ALL SELECT NEW.id,'waha_customer',NEW.phone FROM whatsapp_config WHERE enabled=true AND NEW.whatsapp_consent=true AND NEW.source='web'; END IF; RETURN NEW; END $$`,
       `CREATE OR REPLACE TRIGGER booking_notifications AFTER INSERT ON bookings FOR EACH ROW EXECUTE FUNCTION enqueue_booking_notifications()`
     ]) await db().query(sql);
   })();
   await globalDb.citasReady;
 }
 export async function query(sql:string, params:unknown[] = []) { await ready(); return (await db().query(sql,params)).rows; }
+
+export type Query=(sql:string,params?:unknown[])=>Promise<any[]>;
+export async function transaction<T>(fn:(q:Query)=>Promise<T>):Promise<T>{
+ await ready();const database=db();
+ if(database instanceof Pool){const c=await database.connect();try{await c.query('BEGIN');const value=await fn(async(s,p=[])=>(await c.query(s,p)).rows);await c.query('COMMIT');return value;}catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}}
+ return (database as PGlite).transaction(async c=>fn(async(s,p=[])=>(await c.query(s,p)).rows));
+}

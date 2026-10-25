@@ -1,3 +1,5 @@
+import {sendWhatsApp} from './whatsapp';
+import {confirmation} from './whatsapp-bot';
 import { createCipheriv,createDecipheriv,createHash,createHmac,randomBytes,randomUUID } from 'node:crypto';
 import nodemailer from 'nodemailer';
 import webpush from 'web-push';
@@ -34,6 +36,10 @@ export async function enqueueTest(channel:string,endpoint?:string){const r=await
 class PermanentError extends Error{}
 async function deliver(job:any){const r=await configuration(),c=r.config;let text='Prueba de avisos. Tu conexión funciona.',service='Prueba de avisos',date='Ahora';
  if(job.booking_id){const [b]=await query('SELECT * FROM bookings WHERE id=$1',[job.booking_id]);if(!b||b.status==='cancelled')return 'skipped';service=b.service_name;date=new Intl.DateTimeFormat('es-CO',{dateStyle:'medium',timeStyle:'short',timeZone:'America/Bogota'}).format(new Date(b.start_at));text=`Nueva cita: ${service}. ${date} (hora de Medellín). Consulta los detalles en tu agenda.`;}
+ if(job.channel==='waha_customer'||job.channel==='waha_reply'){
+ if(job.channel==='waha_reply'&&!job.booking_id&&Date.now()-new Date(job.created_at).getTime()>15*60000)return 'skipped';
+ return sendWhatsApp(job.target,job.channel==='waha_customer'?await confirmation(query,job.booking_id):job.payload.text);
+ }
  const url='https://www.laprincesadelascejas.com/admin';
  if(job.channel==='email'){
   if(!c.emailEnabled||c.emailTo!==job.target)return 'skipped';
@@ -49,7 +55,7 @@ async function deliver(job:any){const r=await configuration(),c=r.config;let tex
  }else throw new PermanentError('Canal no válido');return 'sent';
 }
 export async function processJobs(sender:((job:any)=>Promise<string>)=deliver){
- const jobs=await query("UPDATE notification_jobs SET status='processing',attempts=attempts+1,next_at=now()+interval '5 minutes' WHERE id IN (SELECT id FROM notification_jobs WHERE (status='pending' OR status='processing') AND next_at<=now() ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 3) RETURNING *");
+ const jobs=await query("UPDATE notification_jobs SET status='processing',attempts=attempts+1,next_at=now()+interval '5 minutes' WHERE id IN (SELECT j.id FROM notification_jobs j WHERE (status='pending' OR status='processing') AND next_at<=now() AND NOT EXISTS (SELECT 1 FROM notification_jobs earlier WHERE j.channel LIKE 'waha_%' AND earlier.channel LIKE 'waha_%' AND earlier.target=j.target AND earlier.id<j.id AND earlier.status IN ('pending','processing')) ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 3) RETURNING *");
  for(const job of jobs){try{await query('UPDATE notification_jobs SET status=$1,error=NULL WHERE id=$2',[await sender(job),job.id]);}catch(e){const failed=e instanceof PermanentError||job.attempts>=5;await query("UPDATE notification_jobs SET status=$1,error=$2,next_at=now()+$3::integer*interval '1 second' WHERE id=$4",[failed?'failed':'pending',e instanceof PermanentError?e.message:'No se pudo enviar. Revisa la conexión y las credenciales del canal.',Math.min(3600,30*2**job.attempts),job.id]);}}
  return jobs.length;
 }
