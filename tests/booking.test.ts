@@ -101,3 +101,18 @@ test('extra hours merge existing windows without reopening blocked time',async()
  await changeAvailability({mode:'extra',date,from:'13:00',to:'18:00'});
  assert.ok(!(await available(1,date)).some(t=>localParts(t).time==='13:00'));
 });
+
+test('daily visual hours split precisely around bookings and never label occupied time free',async()=>{
+ const {dayTimeline}=await import('../lib/day-timeline');
+ const date='2030-01-10',settings={schedule:{weekly:Array.from({length:7},()=>[{start:'09:15',end:'12:00'},{start:'14:00',end:'17:00'}]),dates:{}}};
+ const bookings=[{id:'a',kind:'appointment',status:'confirmed',start_at:date+'T10:15:00-05:00',end_at:date+'T11:45:00-05:00'},{id:'b',kind:'block',status:'confirmed',start_at:date+'T14:30:00-05:00',end_at:date+'T15:15:00-05:00'}];
+ const items=dayTimeline(date,settings,bookings);
+ assert.equal(items.filter(x=>x.kind==='appointment').length,1);
+ assert.equal(items.filter(x=>x.kind==='block').length,1);
+ for(const item of items.filter(x=>x.kind==='free'))for(const b of bookings)assert.ok(!(item.start<Date.parse(b.end_at)&&item.end>Date.parse(b.start_at)));
+ assert.ok(items.some(x=>x.kind==='free'&&localParts(new Date(x.start)).time==='11:45'));
+ assert.ok(!items.some(x=>x.kind==='free'&&localParts(new Date(x.start)).time==='12:00'));
+ assert.ok(dayTimeline(date,settings,[{...bookings[1],status:'cancelled'}]).some(x=>x.kind==='free'&&localParts(new Date(x.start)).time==='14:00'));
+ const closed={schedule:{...settings.schedule,dates:{[date]:[]}}};assert.equal(dayTimeline(date,closed,bookings).filter(x=>x.kind==='free').length,0);
+ const full=dayTimeline(date,settings,[{kind:'block',status:'confirmed',start_at:'2030-01-09T00:00:00-05:00',end_at:'2030-01-12T00:00:00-05:00'}]);assert.equal(full.length,1);assert.equal(full[0].end-full[0].start,86400000);
+});
