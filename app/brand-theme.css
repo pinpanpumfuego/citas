@@ -34,3 +34,5 @@ input[type=checkbox]{accent-color:#b32b36}
 .touch-calendar-grid button:disabled{opacity:.4}
 .modal-backdrop{background:#0009}.public .strip,.public .visit,.brand-feature{background:#1c1113;border-color:#80613b}
 button:focus-visible,a:focus-visible{outline-color:var(--gold)}
+.account-panel{width:100%;max-width:560px}.account-panel h2{display:flex;align-items:center;gap:10px}.account-panel p{line-height:1.6}.account-panel .checkbox-label{gap:10px}.account-panel .checkbox-label input{flex-shrink:0}.account-panel form>.button{margin-top:16px;min-height:50px}
+@media(max-width:760px){.mobile-account>a{display:none}.mobile-account{justify-content:flex-end;gap:4px}.mobile-account button{font-size:12px;padding:8px 5px;gap:4px}.workspace .sidebar .brand{max-width:205px}.agenda-view .sidebar .brand,.hours-view .sidebar .brand,.notifications-view .sidebar .brand{max-width:calc(100% - 130px);font-size:9px;letter-spacing:.5px}.agenda-view .sidebar .brand small,.hours-view .sidebar .brand small,.notifications-view .sidebar .brand small{font-size:7px;letter-spacing:.8px}.account-panel{padding:18px}}

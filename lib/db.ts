@@ -20,6 +20,8 @@ export function db(): DB {
 export async function ready() {
   if (!globalDb.citasReady) globalDb.citasReady = (async () => {
     for (const sql of [
+      `CREATE TABLE IF NOT EXISTS admin_credentials (id integer PRIMARY KEY CHECK(id=1), password_hash text NOT NULL DEFAULT '', version integer NOT NULL DEFAULT 0)`,
+      `INSERT INTO admin_credentials(id) VALUES(1) ON CONFLICT DO NOTHING`,
       `CREATE TABLE IF NOT EXISTS settings (id integer PRIMARY KEY CHECK(id=1), name text NOT NULL DEFAULT 'La Princesa de las Cejas', description text NOT NULL DEFAULT 'Un momento para ti. Una mirada que te representa.', address text NOT NULL DEFAULT 'Medellín, Colombia', phone text NOT NULL DEFAULT '+573217168203', open_time text NOT NULL DEFAULT '09:00', close_time text NOT NULL DEFAULT '18:00', weekdays integer[] NOT NULL DEFAULT '{1,2,3,4,5,6}')`,
       `ALTER TABLE settings ADD COLUMN IF NOT EXISTS schedule jsonb`,
       `INSERT INTO settings(id) VALUES(1) ON CONFLICT DO NOTHING`,

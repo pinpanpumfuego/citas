@@ -8,6 +8,28 @@ const dir=await mkdtemp(path.join(tmpdir(),'citas-test-'));
 process.env.LOCAL_DB_PATH=dir;
 const {query,db}=await import('../lib/db');
 const {available,reserve}=await import('../lib/booking');
+
+test('password rotation rejects invalid changes, stores a hash, and revokes old sessions',async()=>{
+ const {verifyPassword,changePassword,sessionToken,validSession,credentials}=await import('../lib/credentials');
+ const oldPassword=process.env.ADMIN_PASSWORD,oldSecret=process.env.SESSION_SECRET;
+ process.env.ADMIN_PASSWORD='Initial-test-123';process.env.SESSION_SECRET='test-session-secret-only';
+ try{
+  assert.equal((await verifyPassword('Initial-test-123'))?.version,0);
+  const before=sessionToken(0);assert.ok(validSession(before,0));
+  await assert.rejects(changePassword('wrong','New-test-password','New-test-password'),/actual/);
+  await assert.rejects(changePassword('Initial-test-123','short','short'),/8 y 128/);
+  await assert.rejects(changePassword('Initial-test-123','New-test-password','different'),/coinciden/);
+  await assert.rejects(changePassword('Initial-test-123','Initial-test-123','Initial-test-123'),/diferente/);
+  const version=await changePassword('Initial-test-123','New-test-password','New-test-password');
+  assert.equal(version,1);assert.equal(await verifyPassword('Initial-test-123'),null);
+  assert.equal((await verifyPassword('New-test-password'))?.version,1);
+  const stored=await credentials();assert.match(stored.password_hash,/^scrypt\$/);assert.ok(!stored.password_hash.includes('New-test-password'));
+  assert.equal(validSession(before,version),false);const next=sessionToken(version);assert.ok(validSession(next,version));
+  assert.equal(validSession(next+'x',version),false);assert.equal(validSession('NaN.1.fake',version),false);
+  process.env.ADMIN_PASSWORD='Another-env-password';assert.equal(await verifyPassword('Another-env-password'),null);
+  assert.equal((await verifyPassword('New-test-password'))?.version,1);
+ }finally{if(oldPassword===undefined)delete process.env.ADMIN_PASSWORD;else process.env.ADMIN_PASSWORD=oldPassword;if(oldSecret===undefined)delete process.env.SESSION_SECRET;else process.env.SESSION_SECRET=oldSecret;}
+});
 after(async()=>{await (db() as any).close();await rm(dir,{recursive:true,force:true});});
 test('Medellin slots stay at UTC minus five throughout the year',()=>{
   const winter=candidates('2030-01-10','09:00','10:00',30,0),summer=candidates('2030-07-10','09:00','10:00',30,0);

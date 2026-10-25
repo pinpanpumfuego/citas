@@ -1,0 +1,11 @@
+'use client';
+import {useState} from 'react';
+import {Lock} from 'lucide-react';
+export default function AccountPanel(){
+ const [busy,setBusy]=useState(false),[show,setShow]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ return <section className="panel settings-form account-panel"><h2><Lock size={22}/> Cambiar contraseña</h2><p className="muted">Introduce tu contraseña actual y elige una nueva de entre 8 y 128 caracteres.</p><form onSubmit={async e=>{
+  e.preventDefault();const form=e.currentTarget,f=new FormData(form);setError('');setNotice('');
+  if(f.get('newPassword')!==f.get('confirmPassword')){setError('Las contraseñas nuevas no coinciden.');return;}
+  setBusy(true);try{const r=await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'change_password',...Object.fromEntries(f)})});const d=await r.json();if(!r.ok)throw new Error(d.error||'No pudimos cambiar la contraseña.');form.reset();setShow(false);setNotice('Contraseña cambiada. Este teléfono sigue conectado y las demás sesiones se han cerrado.');}catch(e){setError(e instanceof Error?e.message:'No pudimos conectar. Intenta de nuevo.');}finally{setBusy(false);}
+ }}><label>Contraseña actual<input name="currentPassword" type={show?'text':'password'} autoComplete="current-password" maxLength={256} required disabled={busy}/></label><label>Nueva contraseña<input name="newPassword" type={show?'text':'password'} autoComplete="new-password" minLength={8} maxLength={128} required disabled={busy}/></label><label>Repetir nueva contraseña<input name="confirmPassword" type={show?'text':'password'} autoComplete="new-password" minLength={8} maxLength={128} required disabled={busy}/></label><label className="checkbox-label"><input type="checkbox" checked={show} onChange={e=>setShow(e.target.checked)}/>Mostrar contraseñas</label><p className="muted">Se cerrarán las sesiones abiertas en otros dispositivos. Este teléfono seguirá conectado.</p>{error&&<p className="error" role="alert">{error}</p>}{notice&&<p className="notice" role="status">{notice}</p>}<button className="button full" disabled={busy}>{busy?'Cambiando…':'Guardar nueva contraseña'}</button></form></section>;
+}

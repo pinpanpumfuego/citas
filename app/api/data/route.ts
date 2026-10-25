@@ -1,6 +1,7 @@
 import { NextRequest,NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { isAdmin,localMode,equal,token } from '@/lib/auth';
+import { isAdmin,localMode } from '@/lib/auth';
+import {verifyPassword,changePassword,sessionToken} from '@/lib/credentials';
 import { available,reserve } from '@/lib/booking';
 import { validDate } from '@/lib/time';
 import { validateRanges } from '@/lib/schedule';
@@ -51,8 +52,9 @@ export async function POST(req:NextRequest){
     const b=await req.json(); const action=b.action;
     if(action==='login'){
       if(!limit('login',20))return NextResponse.json({error:'Espera un minuto antes de intentar de nuevo.'},{status:429});
-      if(!process.env.ADMIN_PASSWORD || !equal(String(b.password||''),process.env.ADMIN_PASSWORD))return NextResponse.json({error:'Contraseña incorrecta.'},{status:401});
-      const res=NextResponse.json({ok:true});res.cookies.set('citas_session',token(),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'strict',path:'/',maxAge:43200});return res;
+      const account=await verifyPassword(b.password);
+      if(!account)return NextResponse.json({error:'Contraseña incorrecta.'},{status:401});
+      const res=NextResponse.json({ok:true});res.cookies.set('citas_session',sessionToken(account.version),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'strict',path:'/',maxAge:43200});return res;
     }
     if(action==='logout'){const res=NextResponse.json({ok:true});res.cookies.delete('citas_session');return res;}
     if(action==='reserve'){
@@ -63,6 +65,12 @@ export async function POST(req:NextRequest){
       const id=await reserve({serviceId:b.serviceId,date:b.date,start:b.start,customer,phone:consent?'+'+recipient:phone,whatsappConsent:consent});const jobs=await query("SELECT id FROM notification_jobs WHERE booking_id=$1 AND channel='waha_customer'",[id]);return NextResponse.json({ok:true,id,whatsappQueued:jobs.length>0});
     }
     if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
+    if(action==='change_password'){
+      if(localMode())return NextResponse.json({error:'Configura el acceso protegido antes de cambiar la contraseña.'},{status:400});
+      if(!limit('change_password',5))return NextResponse.json({error:'Espera un minuto antes de intentar de nuevo.'},{status:429});
+      const version=await changePassword(b.currentPassword,b.newPassword,b.confirmPassword);
+      const res=NextResponse.json({ok:true});res.cookies.set('citas_session',sessionToken(version),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'strict',path:'/',maxAge:43200});return res;
+    }
     if(action==='preview_period'||action==='open_period')return NextResponse.json(await openPeriod(b,action==='preview_period'));
     if(action==='preview_change'||action==='availability_change')return NextResponse.json(await changeAvailability(b,action==='preview_change'));
     if(action==='service'){
