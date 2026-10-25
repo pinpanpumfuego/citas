@@ -15,7 +15,8 @@ test('Medellin slots stay at UTC minus five throughout the year',()=>{
   assert.equal(localParts(winter.at(-1)!).time,'09:30');
 });
 test('reservation concurrency, buffers, cancellation and inactive services',async()=>{
-  await query("UPDATE settings SET weekdays='{0,1,2,3,4,5,6}' WHERE id=1");
+  const dates=Object.fromEntries([3,4].map(n=>[new Date(Date.now()+n*86400000).toISOString().slice(0,10),[{start:'09:00',end:'18:00'}]]));
+  await query('UPDATE settings SET schedule=$1 WHERE id=1',[{dates}]);
   const [s]=await query("INSERT INTO services(name,price,duration,buffer) VALUES('Prueba',3500,30,15) RETURNING id");
   const date=new Date(Date.now()+3*86400000).toISOString().slice(0,10);
   const slots=await available(s.id,date);assert.ok(slots.length>0);
@@ -33,7 +34,7 @@ test('blocks prevent overlap and closed weekdays prevent bookings',async()=>{
   await query("INSERT INTO bookings(id,service_name,price,customer,phone,start_at,end_at,kind) VALUES('00000000-0000-0000-0000-000000000001','Descanso',0,'','',$1,$2,'block')",[slots[0],new Date(Date.parse(slots[0])+3600000).toISOString()]);
   assert.ok(!(await available(1,date)).includes(slots[0]));
   await assert.rejects(()=>reserve({serviceId:1,date,start:slots[0],customer:'Prueba',phone:'+16175550100'}));
-  await query("UPDATE settings SET weekdays='{}' WHERE id=1");assert.deepEqual(await available(1,date),[]);
+  await query('UPDATE settings SET schedule=$1 WHERE id=1',[{dates:{[date]:[]}}]);assert.deepEqual(await available(1,date),[]);
 });
 
 test('split schedules and date overrides respect service buffers and existing bookings',async()=>{
@@ -43,7 +44,7 @@ test('split schedules and date overrides respect service buffers and existing bo
  const [s]=await query("INSERT INTO services(name,price,duration,buffer) VALUES('Largo',20000,90,30) RETURNING id");
  const date=new Date(Date.now()+6*86400000).toISOString().slice(0,10);
  const weekly=Array.from({length:7},()=>[{start:'09:00',end:'11:00'},{start:'14:00',end:'16:00'}]);
- const schedule={weekly,dates:{} as Record<string,{start:string;end:string}[]>};
+ const schedule={weekly,dates:{[date]:weekly[0]} as Record<string,{start:string;end:string}[]>};
  await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify(schedule)]);
  let slots=await available(s.id,date);assert.deepEqual(slots.map(t=>localParts(t).time),['09:00','14:00']);
  await reserve({serviceId:s.id,date,start:slots[0],customer:'Prueba',phone:'+573217168203'});
@@ -65,7 +66,7 @@ test('quick changes preview conflicts, close whole date ranges, edit and release
  const date=new Date(Date.now()+12*86400000).toISOString().slice(0,10);
  const until=new Date(Date.parse(date)+2*86400000).toISOString().slice(0,10);
  const weekly=Array.from({length:7},()=>[{start:'09:00',end:'18:00'}]);
- await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify({weekly,dates:{}})]);
+ await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify({weekly,dates:Object.fromEntries([0,1,2,3].map(n=>[new Date(Date.parse(date)+n*86400000).toISOString().slice(0,10),weekly[0]]))})]);
  const [s]=await query("INSERT INTO services(name,price,duration,buffer) VALUES('Cambios',20000,90,30) RETURNING id");
  const slots=await available(s.id,date);
  const id=await reserve({serviceId:s.id,date,start:slots[0],customer:'Cita existente',phone:'+573217168203'});
@@ -105,6 +106,7 @@ test('extra hours merge existing windows without reopening blocked time',async()
 test('daily visual hours split precisely around bookings and never label occupied time free',async()=>{
  const {dayTimeline}=await import('../lib/day-timeline');
  const date='2030-01-10',settings={schedule:{weekly:Array.from({length:7},()=>[{start:'09:15',end:'12:00'},{start:'14:00',end:'17:00'}]),dates:{}}};
+ settings.schedule.dates={[date]:settings.schedule.weekly[0]};
  const bookings=[{id:'a',kind:'appointment',status:'confirmed',start_at:date+'T10:15:00-05:00',end_at:date+'T11:45:00-05:00'},{id:'b',kind:'block',status:'confirmed',start_at:date+'T14:30:00-05:00',end_at:date+'T15:15:00-05:00'}];
  const items=dayTimeline(date,settings,bookings);
  assert.equal(items.filter(x=>x.kind==='appointment').length,1);
@@ -115,4 +117,29 @@ test('daily visual hours split precisely around bookings and never label occupie
  assert.ok(dayTimeline(date,settings,[{...bookings[1],status:'cancelled'}]).some(x=>x.kind==='free'&&localParts(new Date(x.start)).time==='14:00'));
  const closed={schedule:{...settings.schedule,dates:{[date]:[]}}};assert.equal(dayTimeline(date,closed,bookings).filter(x=>x.kind==='free').length,0);
  const full=dayTimeline(date,settings,[{kind:'block',status:'confirmed',start_at:'2030-01-09T00:00:00-05:00',end_at:'2030-01-12T00:00:00-05:00'}]);assert.equal(full.length,1);assert.equal(full[0].end-full[0].start,86400000);
+});
+
+test('dates are closed by default, bounded opening is inclusive and never cancels bookings or removes blocks',async()=>{
+ const {openingPlan,openPeriod}=await import('../lib/open-period');
+ const {scheduleFor}=await import('../lib/schedule');
+ assert.deepEqual(scheduleFor({weekdays:[0,1,2,3,4,5,6],open_time:'09:00',close_time:'18:00'}).weekly,Array.from({length:7},()=>[]));
+ const from=new Date(Date.now()+30*86400000).toISOString().slice(0,10),until=new Date(Date.parse(from)+6*86400000).toISOString().slice(0,10),before=new Date(Date.parse(from)-86400000).toISOString().slice(0,10),afterDate=new Date(Date.parse(until)+86400000).toISOString().slice(0,10);
+ await query('UPDATE settings SET schedule=$1 WHERE id=1',[{weekly:Array.from({length:7},()=>[{start:'00:00',end:'23:00'}]),dates:{}}]);
+ assert.deepEqual(await available(1,from),[]);
+ const input={from,until,days:[0,1,2,3,4,5,6],ranges:[{start:'09:00',end:'12:00'},{start:'14:00',end:'18:00'}]};
+ assert.equal(openingPlan(input).dates.length,7);
+ assert.equal(openingPlan({...input,days:[new Date(from+'T12:00Z').getUTCDay()]}).dates.length,1);
+ assert.throws(()=>openingPlan({...input,until:before}));assert.throws(()=>openingPlan({...input,days:[]}));assert.throws(()=>openingPlan({...input,ranges:[{start:'18:00',end:'09:00'}]}));assert.throws(()=>openingPlan({...input,until:'2040-01-01'}));
+ await openPeriod(input,true);assert.deepEqual(await available(1,from),[]);
+ await openPeriod(input);assert.ok((await available(1,from)).length);assert.ok((await available(1,until)).length);assert.deepEqual(await available(1,before),[]);assert.deepEqual(await available(1,afterDate),[]);
+ const id=await reserve({serviceId:1,date:from,start:(await available(1,from))[0],customer:'Se conserva',phone:'+573000000000'});
+ const {changeAvailability}=await import('../lib/availability-change');await changeAvailability({mode:'hours',date:until,from:'14:00',to:'16:00'});
+ await openPeriod({...input,ranges:[{start:'10:00',end:'18:00'}],replace:true});
+ assert.equal((await query('SELECT status FROM bookings WHERE id=$1',[id]))[0].status,'confirmed');assert.ok(!(await available(1,until)).some(t=>localParts(t).time==='14:00'));
+ // A deliberately closed date is retained unless replacement is explicit.
+ await query("UPDATE settings SET schedule=jsonb_set(schedule,ARRAY['dates',$1], '[]'::jsonb) WHERE id=1",[until]);
+ const preview=await openPeriod(input,true);assert.equal(preview.skipped?.length,7);
+ await openPeriod(input);assert.deepEqual(await available(1,until),[]);
+ await openPeriod({...input,replace:true});assert.ok((await available(1,until)).length);
+ assert.deepEqual(await available(1,afterDate),[]);
 });

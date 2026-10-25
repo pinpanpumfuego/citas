@@ -1,6 +1,7 @@
 export type Range={start:string;end:string};
 export type Schedule={weekly:Range[][];dates:Record<string,Range[]>};
-export function scheduleFor(s:any):Schedule{return s.schedule||{weekly:Array.from({length:7},(_,i)=>s.weekdays.includes(i)?[{start:s.open_time,end:s.close_time}]:[]),dates:{}};}
+// Only explicitly opened dates can offer appointments. Legacy weekly rules are ignored.
+export function scheduleFor(s:any):Schedule{return {weekly:Array.from({length:7},()=>[]),dates:s.schedule?.dates||{}};}
 export function validateRanges(value:unknown):Range[]{
  if(!Array.isArray(value)||value.length>8)throw new Error('Usa hasta 8 franjas por día.');
  const time=/^([01]\d|2[0-3]):[0-5]\d$/;

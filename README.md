@@ -75,3 +75,9 @@ Push se activa en cada dispositivo. En iOS/iPadOS 16.4 o posterior se instala de
 Un trigger crea la cola en la misma transacción de la reserva. El servicio Docker `notifications` procesa hasta tres trabajos cada 15 segundos con autenticación interna; no publica puertos adicionales. Reintenta fallos temporales hasta cinco veces y recupera trabajos interrumpidos tras cinco minutos. Un corte después de la aceptación del proveedor puede generar un duplicado. `sent` significa aceptado por el proveedor, no entregado o leído. Las citas canceladas, destinos cambiados y canales desactivados se omiten antes de enviar. Los dispositivos caducados se retiran al recibir HTTP 404/410. No activar canales sin credenciales reales ni interpretar una prueba en cola como entrega confirmada.
 
 Validación: `npm test`, `npm run build`. Las pruebas usan una base aislada y proveedores simulados, sin enviar mensajes reales.
+
+## Apertura por períodos
+
+Todas las fechas sin entrada explícita en `schedule.dates` quedan cerradas. `scheduleFor` ignora los antiguos horarios semanales, incluso en bases existentes; las fechas que ya se abrieron expresamente y las reservas/bloqueos se conservan. El endpoint `weekly_schedule` se rechaza para impedir que una pestaña antigua reabra semanas indefinidas.
+
+Horarios → Abrir un período permite elegir inicio/fin inclusivos (hasta un año), días de la semana y una o varias franjas. Primero se muestra un resumen; solo la confirmación abre fechas. Por defecto conserva cualquier fecha con configuración previa (incluidos cierres). La opción de sustituir afecta únicamente a los días seleccionados, sin borrar citas ni bloqueos. Los días no seleccionados conservan su estado. La agenda permite editar/cerrar una fecha concreta. El horizonte público de reserva sigue siendo 90 días.

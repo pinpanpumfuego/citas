@@ -3,8 +3,9 @@ import { query } from '@/lib/db';
 import { isAdmin,localMode,equal,token } from '@/lib/auth';
 import { available,reserve } from '@/lib/booking';
 import { validDate } from '@/lib/time';
-import { scheduleFor,validateRanges } from '@/lib/schedule';
+import { validateRanges } from '@/lib/schedule';
 import { changeAvailability } from '@/lib/availability-change';
+import {openPeriod} from '@/lib/open-period';
 import { randomUUID } from 'node:crypto';
 export const dynamic='force-dynamic';
 const attempts=new Map<string,{count:number;until:number}>();
@@ -50,6 +51,7 @@ export async function POST(req:NextRequest){
       const id=await reserve({serviceId:b.serviceId,date:b.date,start:b.start,customer,phone});return NextResponse.json({ok:true,id});
     }
     if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
+    if(action==='preview_period'||action==='open_period')return NextResponse.json(await openPeriod(b,action==='preview_period'));
     if(action==='preview_change'||action==='availability_change')return NextResponse.json(await changeAvailability(b,action==='preview_change'));
     if(action==='service'){
       const name=clean(b.name,100),description=clean(b.description,500);
@@ -57,16 +59,11 @@ export async function POST(req:NextRequest){
       if(b.id){if(!int(b.id,1,2147483647))throw new Error('Servicio inválido.');await query('UPDATE services SET name=$1,description=$2,price=$3,duration=$4,buffer=$5,active=$6 WHERE id=$7',[name,description,b.price,b.duration,b.buffer,b.active,b.id]);}
       else await query('INSERT INTO services(name,description,price,duration,buffer,active) VALUES($1,$2,$3,$4,$5,$6)',[name,description,b.price,b.duration,b.buffer,b.active]);
      } else if(action==='weekly_schedule'){
-      if(!Array.isArray(b.weekly)||b.weekly.length!==7)throw new Error('Revisa los siete días de la semana.');
-      const weekly=b.weekly.map(validateRanges);
-      const [s]=await query('SELECT * FROM settings WHERE id=1');
-      await query("UPDATE settings SET schedule=jsonb_set($1::jsonb,'{weekly}',$2::jsonb) WHERE id=1",[JSON.stringify(scheduleFor(s)),JSON.stringify(weekly)]);
+      throw new Error('Abre fechas indicando un inicio y un fin. Ya no hay horarios semanales indefinidos.');
     } else if(action==='date_schedule'){
       if(!validDate(b.date))throw new Error('Elige una fecha válida.');
-      const [s]=await query('SELECT * FROM settings WHERE id=1');
-      const schedule=scheduleFor(s);
-      if(b.reset===true)delete schedule.dates[b.date];else schedule.dates[b.date]=validateRanges(b.ranges);
-      await query('UPDATE settings SET schedule=$1::jsonb WHERE id=1',[JSON.stringify(schedule)]);
+      const ranges=b.reset===true?[]:validateRanges(b.ranges);
+      await query("UPDATE settings SET schedule=jsonb_build_object('weekly','[[],[],[],[],[],[],[]]'::jsonb,'dates',COALESCE(schedule->'dates','{}'::jsonb)||jsonb_build_object($1::text,$2::jsonb)) WHERE id=1",[b.date,JSON.stringify(ranges)]);
     } else if(action==='settings'){
 
       const name=clean(b.name,100),description=clean(b.description,1000),address=clean(b.address,300),phone=clean(b.phone,25);
