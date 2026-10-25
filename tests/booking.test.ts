@@ -189,3 +189,24 @@ test('touch calendar applies only explicitly selected dates and can close them w
  await openPeriod(input);await openPeriod({...input,dates:['2030-03-04'],ranges:[]});const [s]=await query('SELECT schedule FROM settings WHERE id=1');
  assert.deepEqual(s.schedule.dates['2030-03-04'],[]);assert.deepEqual(s.schedule.dates['2030-03-06'],input.ranges);assert.deepEqual(s.schedule.dates['2030-03-05'],[{start:'09:00',end:'12:00'}]);
 });
+
+test('appointment edits preserve identity and protect closed or occupied hours',async()=>{
+ const {editBooking}=await import('../lib/edit-booking');
+ const {randomUUID}=await import('node:crypto');
+ const date='2035-06-15',next='2035-06-16';
+ await query('UPDATE settings SET schedule=$1 WHERE id=1',[{dates:{[date]:[{start:'09:00',end:'18:00'}],[next]:[{start:'09:00',end:'18:00'}]}}]);
+ const [s]=await query("INSERT INTO services(name,price,duration,buffer) VALUES('Edición',25000,60,0) RETURNING id");
+ const id=randomUUID(),block=randomUUID();
+ await query("INSERT INTO bookings(id,service_id,service_name,price,customer,phone,start_at,end_at) VALUES($1,$2,'Edición',25000,'Cliente','+573001234567',$3,$4)",[id,s.id,date+'T09:00:00-05:00',date+'T10:00:00-05:00']);
+ await query("INSERT INTO bookings(id,service_name,price,customer,phone,start_at,end_at,kind) VALUES($1,'Descanso',0,'','',$2,$3,'block')",[block,next+'T12:00:00-05:00',next+'T13:00:00-05:00']);
+ const input={id,serviceId:s.id,customer:'Cliente corregido',phone:'+573009876543',price:30000,duration:60,date:next,time:'10:00'};
+ await assert.rejects(editBooking({...input,time:'08:00'}),/horario abierto/);
+ await assert.rejects(editBooking({...input,time:'12:00'}),/cruza/);
+ await assert.rejects(editBooking({...input,date:'2035-06-17'}),/horario abierto/);
+ await editBooking(input);
+ let [saved]=await query('SELECT * FROM bookings WHERE id=$1',[id]);assert.equal(saved.customer,input.customer);assert.equal(saved.price,30000);assert.equal(localParts(saved.start_at).date,next);assert.equal(localParts(saved.start_at).time,'10:00');
+ await editBooking({...input,customer:'Otro nombre'}); // It must not conflict with itself.
+ await query("UPDATE bookings SET status='cancelled' WHERE id=$1",[id]);
+ await assert.rejects(editBooking(input),/confirmadas/);
+ [saved]=await query('SELECT * FROM bookings WHERE id=$1',[id]);assert.equal(saved.status,'cancelled');
+});

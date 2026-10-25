@@ -7,6 +7,7 @@ import { validDate } from '@/lib/time';
 import { validateRanges } from '@/lib/schedule';
 import { changeAvailability } from '@/lib/availability-change';
 import {openPeriod} from '@/lib/open-period';
+import {editBooking} from '@/lib/edit-booking';
 import { randomUUID } from 'node:crypto';
 import {normalizedPhone} from '@/lib/whatsapp';
 export const dynamic='force-dynamic';
@@ -35,7 +36,8 @@ export async function GET(req:NextRequest){
       if(!validDate(date))return NextResponse.json({error:'Fecha inválida'},{status:400});
       const bookings=await query("SELECT * FROM bookings WHERE start_at < (($1::date + 1)::timestamp AT TIME ZONE 'America/Bogota') AND end_at > ($1::date::timestamp AT TIME ZONE 'America/Bogota') ORDER BY start_at",[date]);
       const blocks=await query("SELECT * FROM bookings WHERE kind='block' AND status='confirmed' AND end_at>now() ORDER BY start_at");
-      return NextResponse.json({settings,services,bookings,blocks,local:localMode()});
+      const reservations=await query("SELECT * FROM bookings WHERE kind='appointment' AND start_at>=now()-interval '30 days' ORDER BY start_at LIMIT 200");
+      return NextResponse.json({settings,services,bookings,blocks,reservations,local:localMode()});
     }
     const [settings]=await query('SELECT name,description,address,phone,open_time,close_time,weekdays FROM settings WHERE id=1');
     const [wa]=await query('SELECT enabled FROM whatsapp_config WHERE id=1');
@@ -65,6 +67,7 @@ export async function POST(req:NextRequest){
       const id=await reserve({serviceId:b.serviceId,date:b.date,start:b.start,customer,phone:consent?'+'+recipient:phone,whatsappConsent:consent});const jobs=await query("SELECT id FROM notification_jobs WHERE booking_id=$1 AND channel='waha_customer'",[id]);return NextResponse.json({ok:true,id,whatsappQueued:jobs.length>0});
     }
     if(!await isAdmin())return NextResponse.json({error:'Inicia sesión.'},{status:401});
+    if(action==='edit_booking')return NextResponse.json(await editBooking(b));
     if(action==='change_password'){
       if(localMode())return NextResponse.json({error:'Configura el acceso protegido antes de cambiar la contraseña.'},{status:400});
       if(!limit('change_password',5))return NextResponse.json({error:'Espera un minuto antes de intentar de nuevo.'},{status:429});
