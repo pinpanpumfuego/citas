@@ -65,3 +65,13 @@ WhatsApp no envía ni recibe mensajes: falta configuración de Meta Business, we
 - `tests/booking.test.ts`: concurrencia, margen, cancelación y horario.
 
 La sede es Medellín, Colombia. El número público inicial es +57 3217168203 y se puede editar en Página web. La web abre WhatsApp mediante un enlace; no envía mensajes automáticamente. Los precios nuevos se ingresan en COP. El material gráfico no define precios ni duraciones reservables.
+
+## Avisos de nuevas citas
+
+Administración → Avisos permite cambiar los destinos, conectar los proveedores, activar cada canal y enviar pruebas. Correo: SMTP SSL puerto 465 de Hostinger o Gmail con contraseña de aplicación. WhatsApp: Cloud API v23.0, token de sistema con permisos de mensajería, ID del número emisor y plantilla aprobada con tres parámetros de cuerpo (servicio, fecha, enlace). Los destinos son independientes del contacto público. No se envían mensajes automáticos a clientes.
+
+Push se activa en cada dispositivo. En iOS/iPadOS 16.4 o posterior se instala desde Safari en la pantalla de inicio antes de solicitar permiso. Las claves VAPID se generan una sola vez y se guardan en PostgreSQL. Las credenciales SMTP, el token de Meta y la clave privada VAPID se cifran con AES-256-GCM usando una clave derivada de SESSION_SECRET: conservar este secreto junto con el respaldo; cambiarlo requiere migrar/reconfigurar las credenciales y suscripciones.
+
+Un trigger crea la cola en la misma transacción de la reserva. El servicio Docker `notifications` procesa hasta tres trabajos cada 15 segundos con autenticación interna; no publica puertos adicionales. Reintenta fallos temporales hasta cinco veces y recupera trabajos interrumpidos tras cinco minutos. Un corte después de la aceptación del proveedor puede generar un duplicado. `sent` significa aceptado por el proveedor, no entregado o leído. Las citas canceladas, destinos cambiados y canales desactivados se omiten antes de enviar. Los dispositivos caducados se retiran al recibir HTTP 404/410. No activar canales sin credenciales reales ni interpretar una prueba en cola como entrega confirmada.
+
+Validación: `npm test`, `npm run build`. Las pruebas usan una base aislada y proveedores simulados, sin enviar mensajes reales.

@@ -1,0 +1,32 @@
+import {test,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {randomUUID} from 'node:crypto';
+const dir=await mkdtemp(path.join(tmpdir(),'citas-notifications-'));
+process.env.LOCAL_DB_PATH=dir;
+process.env.SESSION_SECRET='notification-test-secret';
+const {query,db}=await import('../lib/db');
+const {saveConfiguration,configuration,publicConfiguration,encrypt,decrypt,processJobs,validSubscription}=await import('../lib/notifications');
+after(async()=>{await (db() as any).close();await rm(dir,{recursive:true,force:true});});
+test('secrets encrypted, redacted, retained on blank edits; endpoint SSRF rejected',async()=>{
+ const encrypted=encrypt({token:'my-secret'});assert.ok(!encrypted.includes('my-secret'));assert.deepEqual(decrypt(encrypted),{token:'my-secret'});
+ await saveConfiguration({channel:'email',emailTo:'owner@example.com',smtpUser:'sender@example.com',smtpPassword:'secret-password',enabled:true});
+ await saveConfiguration({channel:'email',emailTo:'new@example.com',smtpUser:'sender@example.com',smtpPassword:'',enabled:true});
+ assert.equal((await configuration()).private.smtpPassword,'secret-password');assert.ok(!JSON.stringify(await publicConfiguration()).includes('secret-password'));
+ assert.equal(validSubscription({endpoint:'https://127.0.0.1/private',keys:{p256dh:'a'.repeat(87),auth:'a'.repeat(22)}}),false);
+ assert.equal(validSubscription({endpoint:'https://fcm.googleapis.com/endpoint',keys:{p256dh:'a'.repeat(87),auth:'a'.repeat(22)}}),true);
+});
+test('booking atomically queues enabled channels, overlap failure queues nothing, worker retries without failing booking',async()=>{
+ const id=randomUUID();await query("INSERT INTO bookings(id,service_name,price,customer,phone,start_at,end_at) VALUES($1,'Prueba',0,'Prueba','','2030-01-01T14:00Z','2030-01-01T15:00Z')",[id]);
+ assert.equal((await query('SELECT * FROM notification_jobs WHERE booking_id=$1',[id])).length,1);
+ await assert.rejects(query("INSERT INTO bookings(id,service_name,price,customer,phone,start_at,end_at) VALUES($1,'Prueba',0,'Prueba','','2030-01-01T14:00Z','2030-01-01T15:00Z')",[randomUUID()]));
+ assert.equal((await query('SELECT * FROM notification_jobs')).length,1);
+ await processJobs(async()=>{throw new Error('external secret provider failure');});
+ let [job]=await query('SELECT * FROM notification_jobs');assert.equal(job.status,'pending');assert.equal(job.attempts,1);assert.ok(!job.error.includes('secret'));
+ assert.equal((await query('SELECT status FROM bookings WHERE id=$1',[id]))[0].status,'confirmed');
+ await query("UPDATE notification_jobs SET next_at=now()-interval '1 second'");let sends=0;
+ await Promise.all([processJobs(async()=>{sends++;return 'sent';}),processJobs(async()=>{sends++;return 'sent';})]);assert.equal(sends,1);
+ [job]=await query('SELECT * FROM notification_jobs');assert.equal(job.status,'sent');
+});

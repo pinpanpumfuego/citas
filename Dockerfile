@@ -14,6 +14,7 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/.next ./.next
 COPY --from=build --chown=node:node /app/public ./public
 COPY --from=build --chown=node:node /app/next.config.ts ./next.config.ts
+COPY --from=build --chown=node:node /app/scripts ./scripts
 USER node
 EXPOSE 3000
 CMD ["npm","start","--","--hostname","0.0.0.0"]

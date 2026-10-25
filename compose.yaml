@@ -16,6 +16,7 @@ services:
       retries: 10
     mem_limit: 512m
   app:
+    image: citas-app:local
     build: .
     restart: unless-stopped
     environment:
@@ -35,5 +36,15 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+  notifications:
+    image: citas-app:local
+    restart: unless-stopped
+    command: ["node", "scripts/notification-worker.mjs"]
+    environment:
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET}
+    depends_on:
+      app:
+        condition: service_healthy
+    mem_limit: 128m
 volumes:
   postgres_data:
